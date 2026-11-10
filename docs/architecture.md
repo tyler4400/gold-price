@@ -2,7 +2,7 @@
 
 ## 文档状态与边界
 
-本文记录已确定的目标架构。阶段①交付前端壳与配置；阶段②已实现本机 adapters、抓取脚本、上报客户端及离线单测；阶段③已实现三表 SQL 迁移、本地 D1、Worker 查询与鉴权 ingest API，并通过 Vitest + Miniflare 测试。阶段④已实现前端行情与本地 CVM 预览快照，定时工作流属于阶段⑤；订阅者/提醒规则仅建表，不实现订阅 API、邮箱验证或发信。
+本文记录已确定的目标架构。阶段①交付前端壳与配置；阶段②已实现本机 adapters、抓取脚本、上报客户端及离线单测；阶段③已实现三表 SQL 迁移、本地 D1、Worker 查询与鉴权 ingest API，并通过 Vitest + Miniflare 测试。阶段④已实现前端行情与本地 CVM 预览快照，阶段⑤已实现定时抓取、手动补跑、API 保活与 CI；订阅者/提醒规则仅建表，不实现订阅 API、邮箱验证或发信。
 
 ## 数据流
 
@@ -11,7 +11,7 @@ flowchart TD
     Schedule["GitHub Actions schedule<br/>01:30 / 08:00 UTC 每日<br/>北京时间 09:30 / 16:00"] --> Job["抓取脚本：每源独立 adapter"]
     Manual["workflow_dispatch 手动补跑"] --> Job
     Sources["新浪 / 中国黄金 / 六福 / 周生生<br/>huangjinjiage.cn 品牌备用页"] --> Job
-    GHSecret["GitHub Secret: INGEST_TOKEN<br/>仅注入进程环境变量"] --> Job
+    GHSecret["GitHub Secrets: INGEST_URL / INGEST_TOKEN<br/>映射 WORKER_BASE_URL / INGEST_TOKEN"] --> Job
     Job -->|"HTTPS POST /api/ingest<br/>Authorization: Bearer &lt;INGEST_TOKEN&gt;"| Worker["Cloudflare Worker<br/>静态资源 + API"]
     WorkerSecret["Worker secret: INGEST_TOKEN<br/>通过 env.INGEST_TOKEN 读取"] --> Worker
     Worker -->|"按 date + item_key upsert"| D1[("D1<br/>daily_prices<br/>subscribers / alert_rules 后续启用")]
@@ -29,7 +29,7 @@ flowchart TD
 - `ingest/adapters/`：阶段②实现每个来源的独立 adapter；共同输出下述标准记录。
 - `worker/`：已实现 `/healthz`、静态资源和 latest/history/ingest API；未知 API 返回统一 JSON 404。
 - `migrations/0001_initial.sql`：阶段③三表迁移及索引/约束。
-- `.github/workflows/`：阶段⑤再建立定时抓取/保活，阶段①无 workflow 文件。
+- `.github/workflows/`：阶段⑤已实现 `scrape.yml` 定时抓取/手动补跑、`keepalive.yml` API 保活、`ci.yml` 质量检查。
 
 `wrangler.toml` 中正式环境保留 `DB` 绑定和 `YOUR_D1_DATABASE_ID`。`local` 命名环境同时绑定 `ASSETS` 和 `DB`，用全零占位 ID 运行本地 D1；`pnpm db:migrate:local` 和 `pnpm worker:dev` 共享 `.wrangler/` 下的数据库。静态资源路由配置参考 [Cloudflare Assets 配置说明](https://developers.cloudflare.com/workers/static-assets/binding/)；`/api`、`/api/*`、`/healthz` 先交给 Worker，避免未实现的 API 被 SPA HTML 掩盖。
 
@@ -138,13 +138,15 @@ flowchart TD
 
 每条记录都带真实的 `source_url`。采集 URL 与用户跳转 URL 分开管理：前者用于追溯请求，后者用于访问报价页；六福使用已核实的官网简体内地金价展示页 `https://www.lukfook.com/sc/page/goldprice`，页面包含人民币、足金与卖出/克说明；采集仍使用 API。
 
-## 调度、延迟与保活（阶段⑤实现）
+## 调度、延迟与保活（阶段⑤已实现）
 
-- 每天两次 schedule：`30 1 * * *`（01:30 UTC / 北京时间 09:30）和 `0 8 * * *`（08:00 UTC / 北京时间 16:00）。另设 `workflow_dispatch` 手动补跑；不使用浏览器定时器抓源。
+- 每天两次 schedule：`30 1 * * *`（01:30 UTC / 北京时间 09:30）和 `0 8 * * *`（08:00 UTC / 北京时间 16:00）。另设 `workflow_dispatch` 手动补跑；scrape 与 keepalive 都没有 push/PR 触发，合并本身不启动抓取。
 - workflow 要位于默认分支才会按 schedule 触发；公开仓库连续 60 天无仓库活动时会自动停用定时工作流。任务高峰期可能延迟，严重时排队任务可能被丢弃，不能承诺准点。上述平台行为见 [GitHub 官方事件说明](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule)。
 - 产品按可能延迟数小时设计，不把 09:30 / 16:00 描述为已刷新时间；显示真实数据日期和陈旧提示。08:00 UTC 位于整点高峰，仍按已确定时间配置，用监测与补跑处理延迟。
-- 保活方案采用**维护者每月人工巡检**：检查最近成功运行时间、默认分支 activity、Actions 页面是否出现停用提示；若停用则手动重新启用，随后 workflow_dispatch 补跑。不能把仅查看 Actions 页面当作一定能重置 60 天计时。
-- 可选方案是在阶段⑤另设计每月 keepalive workflow 空 commit，但需要维护者明确启用写权限，而且不能保证保活 workflow 本身永不停用。本阶段不创建 workflow 或空 commit。
+- Scrape 使用 Ubuntu、pnpm 10.32.1、Node.js 24，冻结锁文件安装后调用现有 `pnpm ingest -- --upload`；仅授予 `contents: read`，超时 15 分钟。所有分支的定时/手动运行共用 `gold-price-scrape` concurrency group，`cancel-in-progress: false`，不取消进行中的上报；按 GitHub 默认队列语义保留一个运行和一个等待，新的等待任务可能替换旧的等待任务。
+- Keepalive 每月 1 日 03:17 UTC（北京时间 11:17，`17 3 1 * *`）或手动运行，仅授予 `actions: write`，超时 5 分钟。使用自动提供的工作流 token，分页列出本仓库 workflows，通过 `github.rest.actions.enableWorkflow` 恢复 `disabled_inactivity` 状态；保留维护者手动停用状态。无 checkout、文件写入或保活提交，不修改默认分支历史。
+- Keepalive **不能保证自动自愈**：若仓库 60 天无活动，它自身的 schedule 也可能被停用；仅在自身仍能运行时才可重新启用其它 workflow。维护者仍需每月检查最近成功运行与数据日期；自身被停时到 Actions 页面点 Enable，再手动运行 Keepalive 和 Scrape，或做一次真实仓库活动、确认 workflow 已启用后手动触发。不能把查看页面、API 调用或定时运行视为一定重置不活跃计时，不推荐空 commit 保活。
+- CI 在所有 `pull_request` 及 `main` 的 `push` 上运行，采用与 Scrape 相同的 Node/pnpm 和冻结安装配置；仅授予 `contents: read`。lint、typecheck、test、build 是独立且失败即红的步骤，无需任何 secret 或 Cloudflare 登录，也不执行抓取上报。
 - 运行成功仍不能代表所有来源新鲜；按 item 的最后数据日监测缺失。数据不写回仓库，不能依赖抓价任务自身制造提交来保活。
 
 ## 失败处理
@@ -157,22 +159,17 @@ flowchart TD
 
 ## 安全与来源展示
 
-生产 INGEST_TOKEN 只存在 GitHub Actions Secret 和 Worker secret 中，值必须相同；运行时分别从环境变量/Worker 环境绑定读取。前端、VITE_*、Git remote URL、日志、README、issue、构建产物均不得携带 token。所有示例只使用名称或占位符。源 URL 和生产 Worker URL 均使用 HTTPS。本地 Worker 可用 localhost/127.0.0.1 HTTP，并在已忽略的 `.dev.vars` 中放开发用假密钥。
+生产 INGEST_TOKEN 只存在 GitHub Actions Secret 和 Worker secret 中，值必须相同；运行时分别从环境变量/Worker 环境绑定读取。GitHub 的 `INGEST_URL` Secret 保存 Worker HTTPS origin（如 `https://YOUR_WORKER_HOST`，无路径、查询参数、片段或凭据），在 scrape job 映射为 `WORKER_BASE_URL`；`INGEST_TOKEN` Secret 映射为同名环境变量。任一为空时，上报前配置检查以非 0 退出，中文提示在仓库 Settings → Secrets and variables → Actions 配置两项，不回显值。前端、VITE_*、Git remote URL、日志、README、issue、构建产物均不得携带 token。所有示例只使用名称或占位符。源 URL 和生产 Worker URL 均使用 HTTPS。本地 Worker 可用 localhost/127.0.0.1 HTTP，并在已忽略的 `.dev.vars` 中放开发用假密钥。
 
 Worker 限定接受的方法、JSON 大小和字段，使用参数化 SQL；写接口进行鉴权及请求体/条数限制；线上请求频率限流留待部署时配置，不因隐藏 URL 就视为安全。前端不直连第三方源，不暴露 ingest secret。公开查询按 item/range 限制，订阅数据不得放入公开接口。
 
 **品牌表不设「来源」列**，所有数据来源统一放页脚；表格中的品牌名或价格可点击打开对应来源页。页脚需列出新浪转发、国际金价/汇率折算、中国黄金、六福、周生生、品牌备用页及原链接；清楚区分转发数据与参考折算值。大卡固定称「上金所基础金价 Au99.99」，不称「官方数据」。
 
-## 部署与密钥配置（后续由维护者执行）
+## 部署与密钥配置
 
-本节远端操作由维护者自行执行。阶段③已有迁移和 API，本次只应用本地迁移及本地验收，不登录、不创建远端服务、不运行 gh、不部署。
+完整操作顺序见 [部署文档](deploy.md)：维护者在本机登录 Cloudflare，创建远端 D1 并填入 `YOUR_D1_DATABASE_ID`，执行 `pnpm exec wrangler d1 migrations apply DB --remote`，交互设置 Worker `INGEST_TOKEN`，通过校验与构建后部署。阶段⑤只交付 workflow 与文档，不代为执行远端操作。
 
-1. 维护者在自己的终端完成 Cloudflare 授权。执行 `pnpm exec wrangler d1 create gold-price`，把返回的数据库 ID 填入 `wrangler.toml` 的 `YOUR_D1_DATABASE_ID`；配置中仍不得写 token。
-2. 先执行 `pnpm build`、`pnpm db:migrate:local` 验证本地迁移，再按上线流程执行 `pnpm exec wrangler d1 migrations apply gold-price --remote`。本地 `local` 环境已配置 DB，通过 `pnpm worker:dev` 启动；上报步骤见根目录 README。
-3. 在可信环境生成随机高强度 token。执行 `pnpm exec wrangler secret put INGEST_TOKEN`，在交互提示中输入；不要把值放在命令参数或写进临时文档。
-4. 阶段⑤由维护者执行 `gh secret set INGEST_TOKEN --repo tyler4400/gold-price`，在交互提示中输入相同值。也可在 GitHub 仓库 Settings → Secrets and variables → Actions 设置同名 Secret；本阶段 agent 不执行 gh。
-5. `pnpm install --frozen-lockfile`、`pnpm lint`、`pnpm typecheck`、`pnpm build` 完成后，维护者执行 `pnpm exec wrangler deploy`，使用正式环境而非 `--env local`。阶段⑤把真实 Worker HTTPS 地址设为仓库变量 `WORKER_BASE_URL`；示例只写 `https://YOUR_WORKER_HOST`。
-6. workflow 从 GitHub Secret 映射到进程环境变量 `INGEST_TOKEN`，上报时构造 Authorization Header。首次手动补跑验证数据与源日期，之后启用双 schedule。轮换密钥时同步两处，并在轮换后补跑；失败时拒绝写入，不留旁路。
+GitHub Actions 使用 `INGEST_URL`、`INGEST_TOKEN` 两个 repository secrets，不再使用仓库变量 `WORKER_BASE_URL`；该名称仅为现有 CLI 的进程环境变量。首次手动运行 Scrape 后检查 `/api/latest` 的关键项、真实报价日期和本轮摘要，再观察默认分支上的双 schedule。轮换 token 时同步 Worker 与 GitHub 两处，补跑验证；失败时拒绝写入，不留旁路。
 
 不将邮件服务凭据提前放入项目；等服务商确定后单独设计验证、退订和发信。敏感本地调试配置只能放 `.dev.vars` / `.env`（已忽略），不使用 `VITE_` 前缀。
 
@@ -186,4 +183,4 @@ Worker 限定接受的方法、JSON 大小和字段，使用参数化 SQL；写�
 
 ## 后续阶段
 
-阶段②已完成 adapter 与来源样本验证；阶段③已完成上述数据表、迁移、鉴权和 API。阶段④已完成行情卡、ECharts 历史走势、品牌表、来源页脚、提醒按钮占位及只读快照脚本。阶段⑤：双 schedule、手动补跑、运行摘要与保活落实。邮件服务商选定后再接验证/发信；实时行情留待 v2。
+阶段②已完成 adapter 与来源样本验证；阶段③已完成上述数据表、迁移、鉴权和 API。阶段④已完成行情卡、ECharts 历史走势、品牌表、来源页脚、提醒按钮占位及只读快照脚本。阶段⑤已完成双 schedule、手动补跑、沿用 CLI 运行摘要、API 保活和 CI；远端部署与 secrets 由维护者按部署文档配置。邮件服务商选定后再接验证/发信；实时行情留待 v2。

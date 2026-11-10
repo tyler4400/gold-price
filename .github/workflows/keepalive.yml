@@ -1,0 +1,36 @@
+name: Keepalive
+
+on:
+  schedule:
+    - cron: '17 3 1 * *'
+  workflow_dispatch:
+
+permissions:
+  actions: write
+
+jobs:
+  enable-workflows:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Enable workflows disabled by inactivity
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const workflows = await github.paginate(
+              github.rest.actions.listRepoWorkflows,
+              { ...context.repo, per_page: 100 }
+            );
+            let enabled = 0;
+            for (const workflow of workflows) {
+              // 保留维护者手动停用的状态，不创建提交或写入仓库文件。
+              if (workflow.state !== 'disabled_inactivity') continue;
+              await github.rest.actions.enableWorkflow({
+                ...context.repo,
+                workflow_id: workflow.id,
+              });
+              core.info(`已重新启用 workflow：${workflow.name}（${workflow.id}）`);
+              enabled += 1;
+            }
+            core.info(`检查完成，重新启用 ${enabled} 个因不活跃停用的 workflow。`);
+            core.info('若 Keepalive 自身也被停用，需维护者在 Actions 页面启用后手动补跑；本任务不能保证自动自愈。');

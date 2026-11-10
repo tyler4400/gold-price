@@ -1,0 +1,48 @@
+name: Scrape
+
+on:
+  schedule:
+    - cron: '30 1 * * *'
+    - cron: '0 8 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# 定时与手动补跑共用锁；不因新任务取消正在进行的上报。
+concurrency:
+  group: gold-price-scrape
+  cancel-in-progress: false
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      WORKER_BASE_URL: ${{ secrets.INGEST_URL }}
+      INGEST_TOKEN: ${{ secrets.INGEST_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.32.1
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Check ingest secrets
+        shell: bash
+        run: |
+          if [[ -z "$WORKER_BASE_URL" || -z "$INGEST_TOKEN" ]]; then
+            echo '::error::缺少上报配置。请在仓库 Settings → Secrets and variables → Actions 配置 INGEST_URL（Worker 的 HTTPS origin，如 https://YOUR_WORKER_HOST，无路径、查询参数或凭据）和 INGEST_TOKEN（与 Worker secret 相同）。'
+            exit 1
+          fi
+      - name: Scrape and upload
+        run: pnpm ingest -- --upload
