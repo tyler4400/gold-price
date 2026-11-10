@@ -79,7 +79,7 @@
 | 国际现货金参考价       | `xau_cny_g`              | [hf_XAU](https://hq.sinajs.cn/list=hf_XAU) + [fx_susdcny](https://hq.sinajs.cn/list=fx_susdcny)，折算元/克 | [新浪国际现货金](https://finance.sina.com.cn/futures/quotes/XAU.shtml) |
 | 中国黄金·基础金价      | `china_gold_base`        | [中国黄金 board](https://www.chnau99999.com/page/board)，POST 的 `data.cur`                                | [中国黄金报价页](https://www.chnau99999.com/page/goldPrice)            |
 | 中国黄金·足金饰品      | `china_gold_jewelry`     | 同一 POST 响应的 `data.accessories`                                                                        | [中国黄金报价页](https://www.chnau99999.com/page/goldPrice)            |
-| 六福                   | `lukfook_jewelry`        | [goldprice](https://www.lukfook.com/api/goldprice)，内地 `data.cn` 足金999(克)或足金(克)卖出价             | [六福来源](https://www.lukfook.com/api/goldprice)                      |
+| 六福                   | `lukfook_jewelry`        | [goldprice](https://www.lukfook.com/api/goldprice)，内地 `data.cn` 足金999(克)或足金(克)卖出价             | [六福内地金价](https://www.lukfook.com/sc/page/goldprice)                      |
 | 周生生                 | `chow_sang_sang_jewelry` | [gold-info](https://cn.chowsangsang.com/gold-info)，HTML 内嵌 prices JSON 的足金饰品卖出价                 | [周生生金价页](https://cn.chowsangsang.com/gold-info)                  |
 | 周大福                 | `chow_tai_fook_jewelry`  | huangjinjiage.cn，GBK，精确匹配品牌行                                                                      | [HTTPS 品牌备用页](https://www.huangjinjiage.cn/pinpaijinjia.html)     |
 | 老凤祥                 | `lao_feng_xiang_jewelry` | 同备用页，对应品牌行                                                                                       | [HTTPS 品牌备用页](https://www.huangjinjiage.cn/pinpaijinjia.html)     |
@@ -87,7 +87,7 @@
 | 周大生                 | `chow_tai_seng_jewelry`  | 同备用页，对应品牌行                                                                                       | [HTTPS 品牌备用页](https://www.huangjinjiage.cn/pinpaijinjia.html)     |
 | 菜百首饰               | `caibai_jewelry`         | 同备用页，对应品牌行                                                                                       | [HTTPS 品牌备用页](https://www.huangjinjiage.cn/pinpaijinjia.html)     |
 
-以上来源在阶段①未实际抓取。六福暂以已知 API 来源跳转；阶段②如核实更适合阅读的报价页，可同步更新跳转清单。周生生存在 Akamai 反爬风险；huangjinjiage.cn 的转载条款与新浪转发的上金所数据授权需上线前核实，能获取数据不代表获准使用。
+阶段②已实现本机抓取与离线样本测试，尚未接入前端或 Worker 业务 API。六福已核实官网简体金价页包含内地人民币足金卖出价，跳转使用 `https://www.lukfook.com/sc/page/goldprice`，采集仍使用 API。周生生存在 Akamai 反爬风险；huangjinjiage.cn 的转载条款与新浪转发的上金所数据授权需上线前核实，能获取数据不代表获准使用。
 
 ## 验收标准
 

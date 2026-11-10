@@ -19,9 +19,12 @@
     "dev": "vite",
     "build": "pnpm typecheck && vite build",
     "preview": "vite preview",
-    "lint": "oxlint --deny-warnings src worker vite.config.ts",
+    "lint": "oxlint --deny-warnings src worker ingest vite.config.ts",
     "typecheck": "tsc -b",
-    "worker:dev": "wrangler dev --env local --local"
+    "worker:dev": "wrangler dev --env local --local",
+    "test": "node --test ingest/tests/*.test.ts",
+    "ingest": "node ingest/cli.ts",
+    "ingest:dry": "node ingest/cli.ts --dry-run"
   },
   "dependencies": {
     "@radix-ui/react-slot": "^1.2.3",
@@ -38,6 +41,7 @@
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.2",
+    "cheerio": "^1.2.0",
     "oxlint": "^1.89.0",
     "tailwindcss": "^4.3.3",
     "typescript": "~6.0.2",

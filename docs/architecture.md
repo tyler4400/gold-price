@@ -2,7 +2,7 @@
 
 ## 文档状态与边界
 
-本文记录已确定的目标架构。阶段①只交付前端壳、静态资源/健康检查 Worker、配置和文档；以下表结构、API 契约、数据抓取、定时工作流及邮件规则均为后续设计，未实现。本阶段不包含迁移 SQL、adapter、抓取脚本、单测或 GitHub Actions workflow。
+本文记录已确定的目标架构。阶段①交付前端壳、静态资源/健康检查 Worker、配置和文档；阶段②已实现本机 adapters、抓取脚本、上报客户端及离线单测。以下表结构、Worker 业务 API、定时工作流及邮件规则仍为后续设计，未实现。阶段②不包含迁移 SQL、业务 API 或 GitHub Actions workflow。
 
 ## 数据流
 
@@ -42,7 +42,7 @@ flowchart TD
 | `item_key`   | TEXT，必填，白名单       | 稳定数据项标识，见下方数据源清单                                |
 | `price`      | REAL，必填，有限且大于 0 | 元/克，入库前统一到两位小数；不接受 NaN、Infinity、空值或零占位 |
 | `unit`       | TEXT，固定 `CNY/g`       | 所有入库价格统一人民币元/克                                     |
-| `source_url` | TEXT，HTTPS，必填        | 该条记录的采集来源 URL，服务端限制到对应来源白名单              |
+| `source_url` | TEXT，HTTPS，必填        | 该条记录的来源展示页 URL，服务端限制到对应来源白名单              |
 | `fetched_at` | TEXT，UTC ISO 8601，必填 | 实际抓取时刻，区别于报价日期                                    |
 
 唯一键为 **(`date`, `item_key`)**；另建 (`item_key`, `date`) 查询索引。当天早晚两次上报更新同一条记录，不增加日内点。重复上报 upsert 覆盖价格、单位、来源、抓取时刻；完全相同的重试不产生额外行。防止乱序任务把新报价覆盖为旧报价：只有 `fetched_at` 不早于库内值时才更新。
@@ -107,7 +107,7 @@ flowchart TD
 
 ## 数据源与 adapter 约定
 
-以下为已选定的采集方案，**阶段①未运行抓取或验证实时可用性**。阶段②需用固定响应样本验证字段、编码、日期和价格校验；不可把文档中的计划误报为已抓取成功。
+以下为已选定的采集方案。阶段②已使用保存的真实响应验证字段、编码、日期与价格，字段索引、时效阈值和运行方法见 [adapter 说明](../ingest/adapters/README.md)。实时可用性仍取决于源站。
 
 | item_key / 页面名称                      | 请求与解析约定                                                                                                                                                                          | 页面跳转                                                               |
 | ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
@@ -115,7 +115,7 @@ flowchart TD
 | `xau_cny_g` / 国际现货金参考价           | 另取 `https://hq.sinajs.cn/list=hf_XAU` 与 `https://hq.sinajs.cn/list=fx_susdcny`，同 Referer、GB18030 + CSV。两项均有效才折算元/克；仅参考，不混作上金所价格。                         | [新浪国际现货金](https://finance.sina.com.cn/futures/quotes/XAU.shtml) |
 | `china_gold_base` / 中国黄金·基础金价    | `POST https://www.chnau99999.com/page/board`，**空 body 且必须带 `Content-Length: 0`**；JSON `data.cur`。                                                                               | [中国黄金报价](https://www.chnau99999.com/page/goldPrice)              |
 | `china_gold_jewelry` / 中国黄金·足金饰品 | 同一个响应的 `data.accessories`，与基础金价分为独立记录、独立行，不能混用。                                                                                                             | [中国黄金报价](https://www.chnau99999.com/page/goldPrice)              |
-| `lukfook_jewelry` / 六福                 | `GET https://www.lukfook.com/api/goldprice`；限定内地 `data.cn`，精确选择「足金999(克)」或「足金(克)」**卖出价**；两者均有时优先足金999(克)。                                           | [六福来源](https://www.lukfook.com/api/goldprice)                      |
+| `lukfook_jewelry` / 六福                 | `GET https://www.lukfook.com/api/goldprice`；限定内地 `data.cn`，精确选择「足金999(克)」或「足金(克)」**卖出价**；两者均有时优先足金999(克)。                                           | [六福内地金价](https://www.lukfook.com/sc/page/goldprice)                      |
 | `chow_sang_sang_jewelry` / 周生生        | `GET https://cn.chowsangsang.com/gold-info`；提取 HTML 内嵌 `prices` JSON，选择「足金饰品」→「卖出」，不能取回收价。                                                                    | [周生生金价](https://cn.chowsangsang.com/gold-info)                    |
 | `chow_tai_fook_jewelry` / 周大福         | 下述 HTTPS 备用品牌页，精确匹配品牌行并读取足金饰品价、单位、日期。                                                                                                                     | [品牌备用页](https://www.huangjinjiage.cn/pinpaijinjia.html)           |
 | `lao_feng_xiang_jewelry` / 老凤祥        | 同备用页，精确品牌行。                                                                                                                                                                  | [品牌备用页](https://www.huangjinjiage.cn/pinpaijinjia.html)           |
@@ -127,7 +127,7 @@ flowchart TD
 
 `人民币元/克 = hf_XAU 的美元/金衡盎司价格 × fx_susdcny 的人民币/美元汇率 ÷ 31.1034768`。先确认字段对应的货币方向及交易时间，保留足够计算精度，最终展示两位小数。汇率缺失、方向不符或任一行情明显陈旧时不生成折算记录，不能回退到硬编码汇率。
 
-`xau_cny_g.source_url` 记录国际金价采集 URL；汇率输入的来源在该项来源说明和统一页脚中同时列示。参考值的日期采用两输入都有效的报价口径，不把跨日陈旧输入拼成最新值；具体来源时间兼容规则在阶段②样本验证时确定并记录。
+`xau_cny_g.source_url` 记录国际金价展示页 URL；汇率输入的来源在该项来源说明和统一页脚中同时列示。参考值的日期采用两输入都有效的报价口径，不把跨日陈旧输入拼成最新值；阶段②要求同报价日期、时差不超过 6 小时、各自不早于抓取时刻 36 小时且不超前 5 分钟；不满足则不产出参考值。
 
 ### 备用页与解析边界
 
@@ -135,7 +135,7 @@ flowchart TD
 
 每个源一个 adapter：中国黄金一次请求输出两个 item；新浪 adapter 内分别校验 Au99.99 与国际参考输入；品牌备用页可一次请求解析出五个品牌，逐行校验，不能因一行缺失抹掉其它有效记录。周生生仅对明确提取的 JSON 使用 JSON 解析，禁止 eval 网页脚本。
 
-每条记录都带真实的 `source_url`。采集 URL 与用户跳转 URL 分开管理：前者用于追溯请求，后者用于访问报价页；六福当前使用已知 API 作为来源跳转，不假定未核实的展示页。阶段②若调整可读跳转页，需同步本清单和 spec。
+每条记录都带真实的 `source_url`。采集 URL 与用户跳转 URL 分开管理：前者用于追溯请求，后者用于访问报价页；六福使用已核实的官网简体内地金价展示页 `https://www.lukfook.com/sc/page/goldprice`，页面包含人民币、足金与卖出/克说明；采集仍使用 API。
 
 ## 调度、延迟与保活（阶段⑤实现）
 

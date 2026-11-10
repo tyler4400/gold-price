@@ -2,7 +2,7 @@
 
 公开金价走势页 + 到价邮件提醒。计划汇总上金所基础金价 Au99.99、国际现货金参考价和品牌足金饰品价，并保留每日历史记录。v1 的「设到价提醒」只做按钮占位，点击提示「即将上线」；发信、邮箱验证和订阅操作等用户选定邮件服务商后再接。
 
-**当前仅完成阶段①：脚手架 + 文档。** 可以启动中文空状态首页、切换主题、打开 GitHub，或通过本地 Worker 预览静态资源和健康检查。尚无真实行情、图表、抓取、数据库表、业务 API、提醒按钮或邮件功能；按钮占位也留到阶段④完整行情页。
+**当前完成阶段①脚手架与阶段②本机数据抓取。** 可以运行数据源 adapters、离线测试和真实 dry-run；前端仍为中文空状态首页，可切换主题、打开 GitHub，或通过本地 Worker 预览静态资源和健康检查。尚无行情前端、图表、数据库表、业务 API、提醒按钮或邮件功能。
 
 ## 技术栈
 
@@ -31,6 +31,7 @@ pnpm dev
 ```bash
 pnpm lint
 pnpm typecheck
+pnpm test
 pnpm build
 pnpm preview
 ```
@@ -50,13 +51,30 @@ Wrangler 可能提示顶层 `DB` 绑定未配置到 `env.local`；这是阶段�
 
 如运行环境的包管理器缓存目录只读，可临时使用 `COREPACK_HOME=/tmp/gold-price-corepack pnpm install --store-dir /tmp/gold-price-pnpm-store`；普通开发机无需此设置。
 
+## 本机抓取（阶段②）
+
+```bash
+pnpm ingest:dry
+# 以下两种也默认/显式 dry-run：
+pnpm ingest
+pnpm ingest -- --dry-run
+```
+
+需要外网，不需要密钥；输出 JSON 包含六字段成功记录、逐项失败摘要、日期降级/汇率说明及退出状态。dry-run 绝不调用 ingest POST。部分源可能超时或反爬，失败不会填假值，也不会清空其它有效项。`pnpm test` 使用保存的 fixtures，测试禁止外网访问。
+
+关键项为 `sge_au9999` 和 `china_gold_base`：任一成功可退出 0；两项全失败或没有有效记录则退出 1。中国黄金的基础与饰品价独立输出。价格为舍入至分的 JSON number；`.00` 不作为字符串尾零保存。
+
+仅显式 `pnpm ingest -- --upload` 启用上报客户端。需由运行环境提供 `INGEST_TOKEN` 与 `WORKER_BASE_URL`（例如 `https://YOUR_WORKER_HOST`，不能带凭据或查询参数）；缺配置立即失败。密钥只进入 Authorization header，不进入 URL、日志或文件。阶段③接口尚未实现，因此本阶段使用 dry-run 验收，无需实际上报。上报失败，或两关键项都失败，即使其它项上传成功也退出非 0。
+
+每请求 15 秒超时、最多 2 次重试；细节、来源选择和国际报价时效阈值见 [adapter 说明](ingest/adapters/README.md)，样本来源见 [fixtures](ingest/fixtures/README.md)。
+
 ## 目录
 
 | 路径               | 用途                                    |
 | ------------------ | --------------------------------------- |
 | `src/`             | 中文前端壳、主题、布局、基础组件        |
 | `worker/`          | 静态资源与健康检查占位                  |
-| `ingest/adapters/` | 阶段② adapters 预留，仅说明文件         |
+| `ingest/` | 阶段② adapters、CLI、上报客户端、离线 fixtures 与单测 |
 | `migrations/`      | 阶段③ D1 迁移预留，仅说明文件           |
 | `wrangler.toml`    | 静态资源配置、D1 占位及无 D1 的本地环境 |
 | `docs/`            | 架构、产品说明和现有视觉稿              |
