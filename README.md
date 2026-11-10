@@ -56,7 +56,7 @@ pnpm preview
    pnpm worker:dev
    ```
 
-   `db:migrate:local` 等价于 `wrangler d1 migrations apply DB --env local --local`；`worker:dev` 等价于 `wrangler dev --env local --local`。两者使用同一个本地 D1，数据存于已忽略的 `.wrangler/`。本地 ID 是全零占位，正式环境仍保留 `YOUR_D1_DATABASE_ID`。不登录、不创建远端服务、不部署。打开 **`http://127.0.0.1:8787`** 即可查看完整行情页，静态资源与 API 同源。前端改动后需重新 build；开发热更新则另开终端 `pnpm dev` 后看 5173。空库会显示空状态，已有本地数据会直接展示。结束预览按 Ctrl+C 关闭 Worker。
+   `db:migrate:local` 等价于 `wrangler d1 migrations apply DB --env local --local`；`worker:dev` 等价于 `wrangler dev --env local --local`。两者使用同一个本地 D1，数据存于已忽略的 `.wrangler/`。本地 ID 是全零占位；生产 D1 的 `database_id` 写在顶层 `wrangler.toml`，不要改 `env.local`。打开 **`http://127.0.0.1:8787`** 即可查看完整行情页，静态资源与 API 同源。前端改动后需重新 build；开发热更新则另开终端 `pnpm dev` 后看 5173。空库会显示空状态，已有本地数据会直接展示。结束预览按 Ctrl+C 关闭 Worker。
 
 3. 另开终端，真实抓取并上传到本地 Worker：
 
@@ -180,18 +180,18 @@ pnpm ingest -- --dry-run
 | `worker/`          | 静态资源、健康检查、查询与鉴权上报 API                  |
 | `ingest/` | 阶段② adapters、CLI、上报客户端、离线 fixtures 与单测 |
 | `migrations/`      | 三表的正式 D1 SQL 迁移           |
-| `wrangler.toml`    | 静态资源配置、正式 D1 占位及本地 D1 绑定 |
+| `wrangler.toml`    | 静态资源配置、生产 D1 绑定及本地 D1 绑定 |
 | `docs/`            | 架构、产品说明和现有视觉稿              |
 
 ## 部署与自动化
 
-完整步骤见 [部署文档](docs/deploy.md)：Cloudflare 登录、远端 D1 创建与迁移、Worker secret、构建部署、自定义域名、GitHub secrets 和首次手动抓取验收，均由维护者在自己的环境执行。
+完整说明见 [部署文档](docs/deploy.md)。生产站通过 Cloudflare Workers Builds 监听 `main` 的 push，自动执行 `pnpm run build` 与 `npx wrangler deploy`，不经过 GitHub Actions 部署。线上地址是 `https://gold-price.tyler4400g.workers.dev`。`INGEST_TOKEN` 与 `INGEST_URL` 分别写在 Worker secret 和仓库 Actions secrets 中，不要写入仓库。
 
 Scrape 每日 01:30 / 08:00 UTC（北京时间 09:30 / 16:00）运行，也可手动补跑；不在 push/PR 时触发，合并本身不会抓取。GitHub Secret `INGEST_URL` 映射为 CLI 的 `WORKER_BASE_URL`，`INGEST_TOKEN` 映射为同名环境变量；缺配置会明确失败并给出中文提示。CI 在 PR 和 main push 上运行 lint、typecheck、test、build，无需密钥。Keepalive 每月通过 API 恢复因不活跃停用的 workflow，不创建提交；若自身也被停用，仍需维护者启用并补跑，详见部署文档。
 
 ## 文档与阶段
 
-- [部署与 Actions](docs/deploy.md)：完整上线顺序、密钥映射、验收、调度与保活局限。
+- [部署与 Actions](docs/deploy.md)：Workers Builds、密钥映射、抓取验收、调度与保活局限。
 - [架构设计](docs/architecture.md)：数据流、表结构、API、数据源、失败策略、安全与运维。
 - [项目说明书](docs/spec.md)：v1 范围、页面、提醒规则、数据项与后续验收。
 - [视觉稿](docs/mockups/)：保留原有七张图，仅作设计参考，不代表已实现。
