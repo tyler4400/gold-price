@@ -2,7 +2,7 @@
 
 ## 文档状态与边界
 
-本文记录已确定的目标架构。阶段①交付前端壳与配置；阶段②已实现本机 adapters、抓取脚本、上报客户端及离线单测；阶段③已实现三表 SQL 迁移、本地 D1、Worker 查询与鉴权 ingest API，并通过 Vitest + Miniflare 测试。前端行情属于阶段④，定时工作流属于阶段⑤；订阅者/提醒规则仅建表，不实现订阅 API、邮箱验证或发信。
+本文记录已确定的目标架构。阶段①交付前端壳与配置；阶段②已实现本机 adapters、抓取脚本、上报客户端及离线单测；阶段③已实现三表 SQL 迁移、本地 D1、Worker 查询与鉴权 ingest API，并通过 Vitest + Miniflare 测试。阶段④已实现前端行情与本地 CVM 预览快照，定时工作流属于阶段⑤；订阅者/提醒规则仅建表，不实现订阅 API、邮箱验证或发信。
 
 ## 数据流
 
@@ -24,7 +24,8 @@ flowchart TD
 
 ### 目录与运行边界
 
-- `src/`：React 前端。阶段①不发起业务 API 请求、不包含伪造金价。
+- `src/`：React 行情前端。阶段④通过同源 latest/history API 展示真实数据，ECharts 按需加载；不包含伪造金价。
+- `scripts/preview-snapshot.ts`：仅供 CVM 静态预览，GET 本地 Worker 导出 45 份 JSON，默认 `preview-api/` 已忽略；不参与正常 Worker 数据流，不替代阶段⑤调度。
 - `ingest/adapters/`：阶段②实现每个来源的独立 adapter；共同输出下述标准记录。
 - `worker/`：已实现 `/healthz`、静态资源和 latest/history/ingest API；未知 API 返回统一 JSON 404。
 - `migrations/0001_initial.sql`：阶段③三表迁移及索引/约束。
@@ -185,4 +186,4 @@ Worker 限定接受的方法、JSON 大小和字段，使用参数化 SQL；写�
 
 ## 后续阶段
 
-阶段②已完成 adapter 与来源样本验证；阶段③已完成上述数据表、迁移、鉴权和 API。阶段④：行情卡、ECharts 历史走势、品牌表、来源页脚及提醒按钮占位。阶段⑤：双 schedule、手动补跑、运行摘要与保活落实。邮件服务商选定后再接验证/发信；实时行情留待 v2。
+阶段②已完成 adapter 与来源样本验证；阶段③已完成上述数据表、迁移、鉴权和 API。阶段④已完成行情卡、ECharts 历史走势、品牌表、来源页脚、提醒按钮占位及只读快照脚本。阶段⑤：双 schedule、手动补跑、运行摘要与保活落实。邮件服务商选定后再接验证/发信；实时行情留待 v2。

@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta
       name="description"
-      content="gold-price：公开金价走势与到价提醒，当前为界面脚手架预览。"
+      content="查看上金所基础金价 Au99.99、国际现货金参考价、八家品牌足金饰品报价及每日历史走势。"
     />
     <title>金价 · gold-price</title>
     <script>
@@ -24,6 +24,17 @@
         document.documentElement.style.colorScheme = dark ? "dark" : "light";
       })();
     </script>
+    <style>
+      /* 外部 CSS 尚未下载时也使用正确背景，避免深色首屏白闪。 */
+      html {
+        background: #fafafa;
+        color-scheme: light;
+      }
+      html.dark {
+        background: #0d1117;
+        color-scheme: dark;
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>
