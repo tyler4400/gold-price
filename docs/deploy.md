@@ -21,6 +21,8 @@ Git 集成已连接到 `tyler4400/gold-price`，生产分支为 `main`。配置�
 
 合并到 `main` 会触发生产构建；其它分支的 push 只更新 Preview，不影响线上。不要新增 GitHub Actions 部署 workflow。构建使用的是已有账号级 Workers Builds token（与 one-ip 共用），不是仓库 secret。
 
+`wrangler.toml` 的 `[previews]` 把预览绑到独立 D1 `gold-price-preview`，避免分支预览写入生产库。预览构建跑 `npx wrangler preview`；缺少该块时预览会失败，但不影响 `main` 上的 `npx wrangler deploy`。
+
 构建命令会执行 `pnpm typecheck && vite build`，产物在 `dist/`。Wrangler 按 `wrangler.toml` 的 `[assets]` 把静态资源和 Worker API 一起发布。本地校验可用：
 
 ```bash
