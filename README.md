@@ -2,14 +2,14 @@
 
 公开金价走势页 + 到价邮件提醒。汇总上金所基础金价 Au99.99、国际现货金参考价和品牌足金饰品价，并保留每日历史记录。v1 的「设到价提醒」只做按钮占位，点击提示「即将上线」；发信、邮箱验证和订阅操作等用户选定邮件服务商后再接。
 
-**当前完成阶段①–④：脚手架、本机抓取、D1/Worker API 与完整行情前端。** 首页展示基础报价、ECharts 历史走势和八个品牌的足金饰品价，直接请求同源 latest/history API。加载、空库、请求失败及重试、缺失品牌、无前值和非今日数据均有独立提示。提醒按钮只提示「即将上线」。定时任务留在阶段⑤；订阅者和提醒规则仅建表，没有订阅 API、邮箱验证或发信。
+**当前完成阶段①–⑤：脚手架、本机抓取、D1/Worker API、完整行情前端，以及 GitHub Actions 定时抓取、保活与 CI。** 首页展示基础报价、ECharts 历史走势和八个品牌的足金饰品价，直接请求同源 latest/history API。加载、空库、请求失败及重试、缺失品牌、无前值和非今日数据均有独立提示。提醒按钮只提示「即将上线」。定时任务与首次部署配置见 [部署文档](docs/deploy.md)；订阅者和提醒规则仅建表，没有订阅 API、邮箱验证或发信。
 
 ## 技术栈
 
 - 前端：React + TypeScript + Vite + Tailwind CSS 4 + shadcn/ui 基础组件 + lucide-react。
 - 服务端：Cloudflare Workers 托管前端与 API，D1 保存每日金价和后续订阅。
 - 图表：ECharts 按需加载，默认 Au99.99 近一个月，支持四个日历范围及报价品种切换。
-- 数据更新：计划由 GitHub Actions 定时抓取，再经 HTTPS 上报 Worker；数据不提交回仓库。
+- 数据更新：由 GitHub Actions 定时抓取，再经 HTTPS 上报 Worker；数据不提交回仓库。
 
 ## 来源与许可证
 
@@ -183,24 +183,15 @@ pnpm ingest -- --dry-run
 | `wrangler.toml`    | 静态资源配置、正式 D1 占位及本地 D1 绑定 |
 | `docs/`            | 架构、产品说明和现有视觉稿              |
 
-## 部署概要（后续阶段由维护者自行执行）
+## 部署与自动化
 
-**API、迁移和阶段④完整行情前端已就绪。** 远端部署由维护者在自己的环境完成 Cloudflare 授权后自行执行；本次只做本地验证：
+完整步骤见 [部署文档](docs/deploy.md)：Cloudflare 登录、远端 D1 创建与迁移、Worker secret、构建部署、自定义域名、GitHub secrets 和首次手动抓取验收，均由维护者在自己的环境执行。
 
-```bash
-pnpm exec wrangler d1 create gold-price
-# 在 wrangler.toml 中替换 YOUR_D1_DATABASE_ID；不要填写任何 secret。
-pnpm db:migrate:local
-pnpm exec wrangler d1 migrations apply gold-price --remote
-pnpm exec wrangler secret put INGEST_TOKEN
-pnpm build
-pnpm exec wrangler deploy
-```
-
-`wrangler secret put` 使用交互式输入；不要把真实 token 放进命令参数、文档或配置。阶段⑤再配置 GitHub Secret `INGEST_TOKEN`、Worker 地址与定时任务。详细顺序、鉴权和保活设计见 [架构文档](docs/architecture.md#部署与密钥配置后续由维护者执行)。以上远端命令仅供维护者参考，本阶段不执行远端创建、迁移、密钥设置或部署。
+Scrape 每日 01:30 / 08:00 UTC（北京时间 09:30 / 16:00）运行，也可手动补跑；不在 push/PR 时触发，合并本身不会抓取。GitHub Secret `INGEST_URL` 映射为 CLI 的 `WORKER_BASE_URL`，`INGEST_TOKEN` 映射为同名环境变量；缺配置会明确失败并给出中文提示。CI 在 PR 和 main push 上运行 lint、typecheck、test、build，无需密钥。Keepalive 每月通过 API 恢复因不活跃停用的 workflow，不创建提交；若自身也被停用，仍需维护者启用并补跑，详见部署文档。
 
 ## 文档与阶段
 
+- [部署与 Actions](docs/deploy.md)：完整上线顺序、密钥映射、验收、调度与保活局限。
 - [架构设计](docs/architecture.md)：数据流、表结构、API、数据源、失败策略、安全与运维。
 - [项目说明书](docs/spec.md)：v1 范围、页面、提醒规则、数据项与后续验收。
 - [视觉稿](docs/mockups/)：保留原有七张图，仅作设计参考，不代表已实现。
