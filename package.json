@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "license": "AGPL-3.0-only",
-  "description": "公开金价走势与到价提醒（阶段①脚手架）",
+  "description": "公开金价走势与到价提醒（阶段③ API 与 D1）",
   "packageManager": "pnpm@10.32.1",
   "engines": {
     "node": ">=24"
@@ -19,12 +19,15 @@
     "dev": "vite",
     "build": "pnpm typecheck && vite build",
     "preview": "vite preview",
-    "lint": "oxlint --deny-warnings src worker ingest vite.config.ts",
+    "lint": "oxlint --deny-warnings src worker ingest vite.config.ts vitest.config.ts",
     "typecheck": "tsc -b",
     "worker:dev": "wrangler dev --env local --local",
-    "test": "node --test ingest/tests/*.test.ts",
+    "test": "pnpm test:ingest && pnpm test:worker",
     "ingest": "node ingest/cli.ts",
-    "ingest:dry": "node ingest/cli.ts --dry-run"
+    "ingest:dry": "node ingest/cli.ts --dry-run",
+    "test:ingest": "node --test ingest/tests/*.test.ts",
+    "test:worker": "vitest run",
+    "db:migrate:local": "wrangler d1 migrations apply DB --env local --local"
   },
   "dependencies": {
     "@radix-ui/react-slot": "^1.2.3",
@@ -36,16 +39,20 @@
     "tailwind-merge": "^3.3.1"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261110.1",
     "@tailwindcss/vite": "^4.3.3",
     "@types/node": "^24.0.0",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.2",
     "cheerio": "^1.2.0",
+    "esbuild": "^0.28.2",
+    "miniflare": "5.20261109.0-beta",
     "oxlint": "^1.89.0",
     "tailwindcss": "^4.3.3",
     "typescript": "~6.0.2",
     "vite": "^8.3.4",
+    "vitest": "^5.1.0",
     "wrangler": "^4.151.2"
   }
 }

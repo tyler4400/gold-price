@@ -64,7 +64,7 @@ test('默认和显式 dry-run 从不发送 ingest POST，即使环境有配置',
     assert.ok(!output.join('').includes('INGEST_TOKEN'));
   }
 });
-test('上报必须配置 HTTPS origin 和密钥，缺配置在抓取前明确失败', async () => {
+test('上报必须配置受限 origin 和密钥，缺配置在抓取前明确失败', async () => {
   const output: string[] = [];
   assert.equal(await main(['--upload'], {}, { collect: async () => { throw new Error('should not collect'); }, print: s => output.push(s) }), 1);
   assert.equal(JSON.parse(output[0] ?? '{}').error.code, 'config');
@@ -104,4 +104,29 @@ test('CLI 两关键项都失败即使上报其它项成功仍非零，无记录�
   let calls = 0;
   assert.equal(await main(['--upload'], env, { collect: async () => emptyResult(), request: async () => { calls++; return '{}'; }, print: () => {} }), 1);
   assert.equal(calls, 0);
+});
+
+
+test('本地 HTTP 仅允许 localhost/127.0.0.1 origin，拒绝其它 HTTP 或附加 URL 信息', () => {
+  for (const origin of ['http://127.0.0.1:8787', 'http://localhost:8787', 'http://127.0.0.1', 'http://localhost', 'https://example.com:8443']) {
+    assert.equal(uploadConfig({ WORKER_BASE_URL: origin, INGEST_TOKEN: 'INGEST_TOKEN' }).url, `${origin}/api/ingest`);
+  }
+  for (const origin of ['http://192.168.1.1', 'http://0.0.0.0', 'http://[::1]', 'http://localhost.evil.example', 'http://127.0.0.2', 'http://localhost/path', 'https://example.com/?', 'https://example.com/#', 'http://localhost?token=INGEST_TOKEN', 'http://localhost/#fragment', 'http://INGEST_TOKEN@localhost', 'http://localhost:password@evil.example']) {
+    assert.throws(() => uploadConfig({ WORKER_BASE_URL: origin, INGEST_TOKEN: 'INGEST_TOKEN' }), isCode('config'));
+  }
+});
+test('CLI --upload 可上传到本地 Worker，并打印成功计数而不泄漏 token', async () => {
+  const output: string[] = [];
+  const env = { WORKER_BASE_URL: 'http://127.0.0.1:8787', INGEST_TOKEN: 'INGEST_TOKEN' };
+  const code = await main(['--', '--upload'], env, {
+    collect: async () => result(), print: s => output.push(s),
+    request: async (url, options) => {
+      assert.equal(url, 'http://127.0.0.1:8787/api/ingest');
+      assert.equal(options?.headers?.Authorization, 'Bearer INGEST_TOKEN');
+      return '{"accepted":2,"updated":1,"ignored":0}';
+    },
+  });
+  assert.equal(code, 0);
+  assert.deepEqual(JSON.parse(output[0] ?? '{}').summary, { succeeded: 2, failed: 0, critical_ok: true, uploaded: true, accepted: 2, updated: 1, ignored: 0, exit_code: 0 });
+  assert.ok(!output.join('').includes('INGEST_TOKEN'));
 });
