@@ -1,6 +1,6 @@
 # 数据源 adapters（阶段②）
 
-本机入口 `pnpm ingest:dry`（或 `pnpm ingest -- --dry-run`）；`pnpm ingest` 也默认 dry-run。仅 `--upload` 启用上报客户端，阶段③的 Worker 接口尚未实现。测试 `pnpm test` 只读取仓库 fixtures，不访问网络。
+本机入口 `pnpm ingest:dry`（或 `pnpm ingest -- --dry-run`）；`pnpm ingest` 也默认 dry-run。仅 `--upload` 启用上报客户端，阶段③已实现 Worker 接口，本地迁移、密钥和上传步骤见 [README](../../README.md)。`pnpm test:ingest` 只读取仓库 fixtures，不访问网络；`pnpm test` 还包含本地 Worker/D1 测试。
 
 每个源一个 adapter，返回 `{ records, failures, notes }`。成功记录严格只有 `date/item_key/price/unit/source_url/fetched_at` 六字段；价格是舍入至分的 JSON number（JSON 不保留 `.00` 尾零），单位 `CNY/g`。失败、日期降级说明和汇率来源放在旁边，不进入上报记录。明确的旧报价日期保持原值，不改写为当天，不生成历史。
 
@@ -50,6 +50,6 @@
 
 关键项固定为 `sge_au9999` 与 `china_gold_base`：至少一个有效且有记录时，dry-run 可退出 0；两项全失败或无有效记录退出 1。非 dry-run 还要求配置有效且上报成功；即使上传了其它有效品牌，两关键项全失败仍退出 1。
 
-上报需环境变量 `INGEST_TOKEN`、`WORKER_BASE_URL`（仅 HTTPS origin，例如 `https://YOUR_WORKER_HOST`），POST `/api/ingest`，Authorization Bearer header，body `{ records: [...] }`。客户端校验未来接口返回的 `accepted/updated/ignored` 计数；阶段②未实现该接口、持久化、Actions 或部署。
+上报需环境变量 `INGEST_TOKEN`、`WORKER_BASE_URL`（HTTPS origin，例如 `https://YOUR_WORKER_HOST`；本地额外允许 localhost/127.0.0.1 的 HTTP origin），POST `/api/ingest`，Authorization Bearer header，body `{ records: [...] }`。客户端校验接口返回的 `accepted/updated/ignored` 计数；阶段③已实现接口和 D1 持久化；Actions 和远端部署仍后置。
 
 保存样本及衍生负例见 [fixtures 说明](../fixtures/README.md)，整体设计见 [架构](../../docs/architecture.md)。

@@ -2,7 +2,7 @@
 
 ## 文档状态与边界
 
-本文记录已确定的目标架构。阶段①交付前端壳、静态资源/健康检查 Worker、配置和文档；阶段②已实现本机 adapters、抓取脚本、上报客户端及离线单测。以下表结构、Worker 业务 API、定时工作流及邮件规则仍为后续设计，未实现。阶段②不包含迁移 SQL、业务 API 或 GitHub Actions workflow。
+本文记录已确定的目标架构。阶段①交付前端壳与配置；阶段②已实现本机 adapters、抓取脚本、上报客户端及离线单测；阶段③已实现三表 SQL 迁移、本地 D1、Worker 查询与鉴权 ingest API，并通过 Vitest + Miniflare 测试。前端行情属于阶段④，定时工作流属于阶段⑤；订阅者/提醒规则仅建表，不实现订阅 API、邮箱验证或发信。
 
 ## 数据流
 
@@ -26,17 +26,17 @@ flowchart TD
 
 - `src/`：React 前端。阶段①不发起业务 API 请求、不包含伪造金价。
 - `ingest/adapters/`：阶段②实现每个来源的独立 adapter；共同输出下述标准记录。
-- `worker/`：阶段①仅 `/healthz` 与静态资源，`/api/*` 404；阶段③加入业务 API。
-- `migrations/`：阶段③添加迁移 SQL，目前只有目录说明。
+- `worker/`：已实现 `/healthz`、静态资源和 latest/history/ingest API；未知 API 返回统一 JSON 404。
+- `migrations/0001_initial.sql`：阶段③三表迁移及索引/约束。
 - `.github/workflows/`：阶段⑤再建立定时抓取/保活，阶段①无 workflow 文件。
 
-`wrangler.toml` 中正式环境保留 `DB` 绑定和 `YOUR_D1_DATABASE_ID`。`local` 命名环境只有 `ASSETS`，用于无数据库的本地预览。静态资源路由配置参考 [Cloudflare Assets 配置说明](https://developers.cloudflare.com/workers/static-assets/binding/)；`/api`、`/api/*`、`/healthz` 先交给 Worker，避免未实现的 API 被 SPA HTML 掩盖。
+`wrangler.toml` 中正式环境保留 `DB` 绑定和 `YOUR_D1_DATABASE_ID`。`local` 命名环境同时绑定 `ASSETS` 和 `DB`，用全零占位 ID 运行本地 D1；`pnpm db:migrate:local` 和 `pnpm worker:dev` 共享 `.wrangler/` 下的数据库。静态资源路由配置参考 [Cloudflare Assets 配置说明](https://developers.cloudflare.com/workers/static-assets/binding/)；`/api`、`/api/*`、`/healthz` 先交给 Worker，避免未实现的 API 被 SPA HTML 掩盖。
 
-## 数据模型（阶段③建表）
+## 数据模型（阶段③已建表）
 
 ### daily_prices
 
-| 字段         | 计划类型 / 约束          | 含义                                                            |
+| 字段         | 类型 / 约束          | 含义                                                            |
 | ------------ | ------------------------ | --------------------------------------------------------------- |
 | `date`       | TEXT，必填，`YYYY-MM-DD` | 报价数据日期，按 Asia/Shanghai 口径                             |
 | `item_key`   | TEXT，必填，白名单       | 稳定数据项标识，见下方数据源清单                                |
@@ -51,7 +51,7 @@ flowchart TD
 
 ### subscribers（预留，v1 不提供订阅操作或发信）
 
-| 字段                       | 计划类型 / 约束    | 含义                                                |
+| 字段                       | 类型 / 约束    | 含义                                                |
 | -------------------------- | ------------------ | --------------------------------------------------- |
 | `id`                       | TEXT，主键         | 随机订阅者标识                                      |
 | `email`                    | TEXT，必填         | 邮箱地址，属于个人信息，不进入公开 API 或日志       |
@@ -64,7 +64,7 @@ flowchart TD
 
 ### alert_rules（预留，阶段③只建表）
 
-| 字段                         | 计划类型 / 约束             | 含义                                                    |
+| 字段                         | 类型 / 约束             | 含义                                                    |
 | ---------------------------- | --------------------------- | ------------------------------------------------------- |
 | `id`                         | TEXT，主键                  | 规则标识                                                |
 | `subscriber_id`              | TEXT，外键 → subscribers.id | 规则归属                                                |
@@ -78,9 +78,9 @@ flowchart TD
 
 邮件接入时还需设计认证、退订、限流、原子发送占位与失败重试/幂等投递；单靠 `last_notified_date` 不能避免并发发送，不能在发信失败时误记成功。服务商选定后再定投递幂等键和状态表，本阶段不写实现。
 
-## API 契约（阶段③实现）
+## API 契约（阶段③已实现）
 
-所有 JSON 使用 UTF-8；日期和价格单位采用上文约定。公开接口只读，不返回订阅者数据。未知 item/range 返回 400，不静默替换。错误响应统一为 `{ error: { code, message } }`（这是未来业务契约；阶段① 404 为简短占位）。
+所有 JSON 使用 UTF-8；日期和价格单位采用上文约定。公开接口只读，不返回订阅者数据。未知 item/range 返回 400，不静默替换。错误响应统一为 `{ error: { code, message } }`。
 
 ### GET /api/latest
 
@@ -97,12 +97,12 @@ flowchart TD
 
 ### POST /api/ingest
 
-- 仅 HTTPS；请求头 `Authorization: Bearer <INGEST_TOKEN>`、`Content-Type: application/json`。
+- 生产使用 HTTPS；本地开发允许 localhost/127.0.0.1 的 HTTP origin。请求头 `Authorization: Bearer <INGEST_TOKEN>`、`Content-Type: application/json`。
 - body 为 `{ records: [...] }`；每条 records 严格要求 daily_prices 六个字段，不接受其它表或任意 SQL。
 - Worker 从 secret 绑定 `env.INGEST_TOKEN` 读取服务端密钥，脚本从进程环境变量 `INGEST_TOKEN` 读取客户端密钥。不得通过 URL 查询参数传 token。
-- 缺失或错误凭据返回 401；服务端未配置 secret 时拒绝写入并返回 503，不降级为公开入口。
-- 计划限制请求体 64 KiB、单批最多 100 条，限制 item_key、单位、价格、日期格式、合理日期范围、来源 URL 及 fetched_at。重复 (`date`, `item_key`) 的歧义批次返回 400；单批任一记录校验失败则整批拒绝，脚本仅提交通过 adapter 校验的记录。
-- 验证后使用参数化查询、D1 事务批处理 upsert；全批成功返回 `{ accepted, updated, ignored }`，其中 accepted 为实际写入/更新总数，updated 为其中更新数，ignored 为因更旧时间戳未写入数。不存在已部分写入却声称全批失败的结果。
+- 缺失或错误凭据返回 401；服务端未配置 secret 时拒绝写入并返回 503，不降级为公开入口。鉴权对两端 token 做 SHA-256 摘要后，以运行时 timingSafeEqual 恒定时间比较固定长度结果；不读取 query token。
+- 请求体上限 64 KiB（包括无 Content-Length 的流式请求）、单批 1–100 条；拒绝额外字段。item_key 为白名单，单位固定 CNY/g，价格为正有限数并舍入到分，整数分须在安全整数范围且大于零。报价日期为有效 YYYY-MM-DD、不得早于 2000-01-01 或晚于 fetched_at 的上海日期。source_url 必须精确匹配该 item 在下方清单的 HTTPS 展示页，不允许凭据、额外路径或查询参数。fetched_at 接受 UTC ISO（秒或 1–3 位小数秒，Z 结尾），不得超前服务器时间 5 分钟；入库统一为毫秒精度 UTC ISO，再按时间顺序比较。重复 (`date`, `item_key`) 的歧义批次返回 400；单批任一记录校验失败则整批拒绝，脚本仅提交通过 adapter 校验的记录。
+- 验证后使用参数化查询、D1 batch 事务批处理 upsert；同批先读取已有键，再条件写入并通过 RETURNING 统计 accepted 与 updated，避免并发造成计数偏差。依赖 [D1 batch 事务保证](https://developers.cloudflare.com/d1/worker-api/d1-database/#batch)，任一 SQL 失败整体回滚；全批成功返回 `{ accepted, updated, ignored }`，其中 accepted 为实际写入/更新总数，updated 为其中更新数，ignored 为因更旧时间戳未写入数。不存在已部分写入却声称全批失败的结果。
 - 400 表示请求非法，413 表示过大，429 表示限流，503 表示暂时不可写。重试仅针对网络错误、429、5xx，按 Retry-After 或退避重试；401/400 不盲目重试。日志不打印 Authorization、请求 secret 或完整响应凭据。
 
 ## 数据源与 adapter 约定
@@ -156,18 +156,18 @@ flowchart TD
 
 ## 安全与来源展示
 
-INGEST_TOKEN 只存在 GitHub Actions Secret 和 Worker secret 中，值必须相同；运行时分别从环境变量/Worker 环境绑定读取。前端、VITE_*、Git remote URL、日志、README、issue、构建产物均不得携带 token。所有示例只使用名称或占位符。源 URL 和 Worker URL 均使用 HTTPS。
+生产 INGEST_TOKEN 只存在 GitHub Actions Secret 和 Worker secret 中，值必须相同；运行时分别从环境变量/Worker 环境绑定读取。前端、VITE_*、Git remote URL、日志、README、issue、构建产物均不得携带 token。所有示例只使用名称或占位符。源 URL 和生产 Worker URL 均使用 HTTPS。本地 Worker 可用 localhost/127.0.0.1 HTTP，并在已忽略的 `.dev.vars` 中放开发用假密钥。
 
-Worker 限定接受的方法、JSON 大小和字段，使用参数化 SQL；写接口进行鉴权和限流，不因隐藏 URL 就视为安全。前端不直连第三方源，不暴露 ingest secret。公开查询按 item/range 限制，订阅数据不得放入公开接口。
+Worker 限定接受的方法、JSON 大小和字段，使用参数化 SQL；写接口进行鉴权及请求体/条数限制；线上请求频率限流留待部署时配置，不因隐藏 URL 就视为安全。前端不直连第三方源，不暴露 ingest secret。公开查询按 item/range 限制，订阅数据不得放入公开接口。
 
 **品牌表不设「来源」列**，所有数据来源统一放页脚；表格中的品牌名或价格可点击打开对应来源页。页脚需列出新浪转发、国际金价/汇率折算、中国黄金、六福、周生生、品牌备用页及原链接；清楚区分转发数据与参考折算值。大卡固定称「上金所基础金价 Au99.99」，不称「官方数据」。
 
 ## 部署与密钥配置（后续由维护者执行）
 
-本节仅供后续操作。阶段①不登录、不创建服务、不运行 gh、不部署，当前迁移目录也没有 SQL。
+本节远端操作由维护者自行执行。阶段③已有迁移和 API，本次只应用本地迁移及本地验收，不登录、不创建远端服务、不运行 gh、不部署。
 
-1. 阶段③完成 migration 与 API 后，维护者在自己的终端完成 Cloudflare 授权。执行 `pnpm exec wrangler d1 create gold-price`，把返回的数据库 ID 填入 `wrangler.toml` 的 `YOUR_D1_DATABASE_ID`；配置中仍不得写 token。
-2. 先执行 `pnpm exec wrangler d1 migrations apply gold-price --local` 验证迁移，再按上线流程执行 `pnpm exec wrangler d1 migrations apply gold-price --remote`。本地开发届时需配置本地 D1 绑定；阶段①的 `local` 环境故意没有 DB。
+1. 维护者在自己的终端完成 Cloudflare 授权。执行 `pnpm exec wrangler d1 create gold-price`，把返回的数据库 ID 填入 `wrangler.toml` 的 `YOUR_D1_DATABASE_ID`；配置中仍不得写 token。
+2. 先执行 `pnpm build`、`pnpm db:migrate:local` 验证本地迁移，再按上线流程执行 `pnpm exec wrangler d1 migrations apply gold-price --remote`。本地 `local` 环境已配置 DB，通过 `pnpm worker:dev` 启动；上报步骤见根目录 README。
 3. 在可信环境生成随机高强度 token。执行 `pnpm exec wrangler secret put INGEST_TOKEN`，在交互提示中输入；不要把值放在命令参数或写进临时文档。
 4. 阶段⑤由维护者执行 `gh secret set INGEST_TOKEN --repo tyler4400/gold-price`，在交互提示中输入相同值。也可在 GitHub 仓库 Settings → Secrets and variables → Actions 设置同名 Secret；本阶段 agent 不执行 gh。
 5. `pnpm install --frozen-lockfile`、`pnpm lint`、`pnpm typecheck`、`pnpm build` 完成后，维护者执行 `pnpm exec wrangler deploy`，使用正式环境而非 `--env local`。阶段⑤把真实 Worker HTTPS 地址设为仓库变量 `WORKER_BASE_URL`；示例只写 `https://YOUR_WORKER_HOST`。
@@ -185,4 +185,4 @@ Worker 限定接受的方法、JSON 大小和字段，使用参数化 SQL；写�
 
 ## 后续阶段
 
-阶段②：adapter 与来源样本验证。阶段③：上述数据表、迁移、鉴权和 API。阶段④：行情卡、ECharts 历史走势、品牌表、来源页脚及提醒按钮占位。阶段⑤：双 schedule、手动补跑、运行摘要与保活落实。邮件服务商选定后再接验证/发信；实时行情留待 v2。
+阶段②已完成 adapter 与来源样本验证；阶段③已完成上述数据表、迁移、鉴权和 API。阶段④：行情卡、ECharts 历史走势、品牌表、来源页脚及提醒按钮占位。阶段⑤：双 schedule、手动补跑、运行摘要与保活落实。邮件服务商选定后再接验证/发信；实时行情留待 v2。

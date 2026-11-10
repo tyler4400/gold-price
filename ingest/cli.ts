@@ -5,6 +5,7 @@ import { createRequester } from './http.ts';
 import type { RequestText } from './http.ts';
 import { collect, collectionExitCode } from './pipeline.ts';
 import { upload, uploadConfig } from './upload.ts';
+import type { UploadSummary } from './upload.ts';
 export async function main(args = process.argv.slice(2), env = process.env, dependencies: {
   request?: RequestText; collect?: () => Promise<Result>; print?: (text: string) => void;
 } = {}): Promise<number> {
@@ -20,10 +21,11 @@ export async function main(args = process.argv.slice(2), env = process.env, depe
     const result = await (dependencies.collect ?? (() => collect(request)))();
     let code = collectionExitCode(result);
     let uploaded = false;
+    let uploadSummary: UploadSummary | undefined;
     let uploadError: { code: string; message: string } | undefined;
     if (config && result.records.length) {
       try {
-        await upload(result.records, config, request);
+        uploadSummary = await upload(result.records, config, request);
         uploaded = true;
       } catch (error) {
         const e = error instanceof IngestError ? error : new IngestError('upload', '上报失败');
@@ -33,7 +35,7 @@ export async function main(args = process.argv.slice(2), env = process.env, depe
     if (!dryRun && !uploaded) code = 1;
     print(JSON.stringify({ dry_run: dryRun, ...result, ...(uploadError ? { upload_error: uploadError } : {}), summary: {
       succeeded: result.records.length, failed: result.failures.length,
-      critical_ok: collectionExitCode(result) === 0, uploaded, exit_code: code,
+      critical_ok: collectionExitCode(result) === 0, uploaded, ...uploadSummary, exit_code: code,
     } }, null, 2));
     return code;
   } catch (error) {
