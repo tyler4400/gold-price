@@ -1,0 +1,122 @@
+/* Primer palette and View Transition base adapted from one-ip; see README. */
+@import "tailwindcss";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --font-sans:
+    system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+    "Microsoft YaHei", sans-serif;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-border: var(--border);
+  --color-input: var(--border);
+  --color-ring: var(--ring);
+  --color-gold: var(--gold);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+}
+
+:root {
+  --background: #fafafa;
+  --foreground: #1a1a1a;
+  --card: #fff;
+  --primary: #0969da;
+  --primary-foreground: #fff;
+  --muted: #f8f9fb;
+  --muted-foreground: #57606a;
+  --border: #e1e4e8;
+  --accent: #eef1f5;
+  --ring: #0969da;
+  --gold: #a97816;
+  --radius: 0.5rem;
+}
+
+.dark {
+  --background: #0d1117;
+  --foreground: #e6edf3;
+  --card: #161b22;
+  --muted: #161b22;
+  --muted-foreground: #aab4bf;
+  --border: #30363d;
+  --accent: #21262d;
+  --ring: #58a6ff;
+  --gold: #d4ac58;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  html {
+    @apply font-sans;
+  }
+  body {
+    @apply bg-background text-foreground;
+    margin: 0;
+    min-width: 320px;
+    line-height: 1.6;
+  }
+}
+
+.page-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1000px);
+  justify-content: center;
+  min-height: 100vh;
+  min-height: 100dvh;
+  padding-inline: max(20px, env(safe-area-inset-left))
+    max(20px, env(safe-area-inset-right));
+}
+
+.content-shell {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+.side-slot {
+  display: none;
+}
+
+@media (min-width: 1200px) {
+  .page-layout {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1000px) minmax(0, 1fr);
+    gap: 32px;
+  }
+  .side-slot {
+    display: block;
+  }
+}
+
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+::view-transition-old(root) {
+  z-index: 1;
+}
+::view-transition-new(root) {
+  z-index: 2;
+}
+::view-transition-group(root) {
+  animation-duration: 0s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition: none !important;
+  }
+}
