@@ -1,89 +1,80 @@
 # 部署与 GitHub Actions
 
-阶段⑤已实现定时抓取、手动补跑、CI 和 API 保活。以下远端操作均由维护者在自己的本机执行；仓库 agent 不代为登录、创建远端资源、部署或设置 GitHub secrets。
+生产站由 [Cloudflare Workers Builds](https://developers.cloudflare.com/workers/ci-cd/builds/) 连接本仓库，在 push 到默认分支 `main` 时自动构建并部署。这条线和合成大模型（`tyler4400/merge-models`）相同：不经过 GitHub Actions 推代码，也不使用 Actions 部署 Worker。仓库里的 Actions 只负责 CI、定时抓取和保活。
 
-准备 Node.js 24、pnpm 10.32.1、Cloudflare 账号及 GitHub 仓库管理权限。在项目根目录执行 `pnpm install --frozen-lockfile`。本文的 `YOUR_WORKER_HOST`、`YOUR_D1_DATABASE_ID` 都是占位符，执行前按实际部署替换；不要复制占位符作为生产配置。
+线上 Worker 名称为 `gold-price`，workers.dev 地址为 `https://gold-price.tyler4400g.workers.dev`。本文不再使用 `YOUR_WORKER_HOST`、`YOUR_D1_DATABASE_ID` 占位符。不要把 token 或 `INGEST_TOKEN` 写入仓库、issue、日志或 `.dev.vars`。
 
-## 1. 登录 Cloudflare
+## 1. Workers Builds
 
-```bash
-pnpm exec wrangler login
-```
+Git 集成已连接到 `tyler4400/gold-price`，生产分支为 `main`。配置与合成大模型对齐，并按本仓库的包管理器改用 pnpm：
 
-在浏览器中完成自己的账号授权。以下生产命令使用 `wrangler.toml` 顶层配置，不加 `--env local`。
+| 项 | gold-price | 对照：merge-models |
+| --- | --- | --- |
+| 生产分支 | `main` | `master` |
+| 根目录 | `/` | `/` |
+| 构建命令 | `pnpm run build` | `npm run build` |
+| 部署命令 | `npx wrangler deploy` | `npx wrangler deploy` |
+| 预览命令 | `npx wrangler preview` | `npx wrangler preview` |
+| 构建缓存 | 开启 | 开启 |
+| 路径过滤 | 包含 `*`，无排除 | 包含 `*`，无排除 |
+| 预览构建 | 开启（其它分支） | 开启 |
 
-## 2. 创建远端 D1 并配置绑定
+合并到 `main` 会触发生产构建；其它分支的 push 只更新 Preview，不影响线上。不要新增 GitHub Actions 部署 workflow。构建使用的是已有账号级 Workers Builds token（与 one-ip 共用），不是仓库 secret。
 
-```bash
-pnpm exec wrangler d1 create gold-price
-```
+`wrangler.toml` 的 `[previews]` 把预览绑到独立 D1 `gold-price-preview`，避免分支预览写入生产库。预览构建跑 `npx wrangler preview`；缺少该块时预览会失败，但不影响 `main` 上的 `npx wrangler deploy`。
 
-将返回的 `database_id` 填入 `wrangler.toml` 顶层 `[[d1_databases]]` 的 `YOUR_D1_DATABASE_ID`，保留 `binding = "DB"`、`database_name = "gold-price"` 和 `migrations_dir = "migrations"`。不要替换 `env.local` 的本地占位 ID。
-
-D1 database ID 是资源标识，不是鉴权密钥；专用部署仓库通常可以将实际 ID 作为配置纳入版本控制，仍须由维护者决定。本仓库当前保留占位符；若保持通用模板形式，在自己的部署工作副本中替换即可。任何情况下都不能把 token 写入 `wrangler.toml`。
-
-## 3. 应用远端迁移
-
-```bash
-pnpm exec wrangler d1 migrations apply DB --remote
-```
-
-确认目标是刚创建的生产数据库，再确认执行。该命令使用 `DB` 绑定及 `migrations/` 中的 SQL；Wrangler 跟踪已应用的迁移。`pnpm db:migrate:local` 仅修改本地库，不能替代这一步。命令说明见 [Wrangler D1 文档](https://developers.cloudflare.com/workers/wrangler/commands/d1/)。
-
-## 4. 设置 Worker secret
-
-在可信环境生成并妥善保存高强度随机密钥，然后执行：
-
-```bash
-pnpm exec wrangler secret put INGEST_TOKEN
-```
-
-只在交互提示中输入值。首次尚无同名 Worker 时，按 Wrangler 提示确认创建后设置 secret；完整应用在下一步部署。不要将值放在命令参数、文档、issue、日志、Git URL、前端代码或任何 `VITE_*` 变量中。不要把生产值写入 `.dev.vars`。稍后 GitHub 的 `INGEST_TOKEN` 必须与此处完全相同；轮换时同步两处并手动补跑验证。
-
-## 5. 校验、构建并部署
+构建命令会执行 `pnpm typecheck && vite build`，产物在 `dist/`。Wrangler 按 `wrangler.toml` 的 `[assets]` 把静态资源和 Worker API 一起发布。本地校验可用：
 
 ```bash
 pnpm lint
 pnpm typecheck
 pnpm test
 pnpm build
-pnpm exec wrangler deploy
 ```
 
-所有校验成功后再部署。`pnpm build` 生成 `dist/`，Wrangler 按 `[assets]` 将静态资源与 Worker API 一起发布。记录部署返回的 Worker HTTPS origin，本文统一写作 `https://YOUR_WORKER_HOST`。
+`pnpm run deploy`（`wrangler deploy`）仅在明确需要手动补发时使用，日常发布以 Workers Builds 为准。
+
+## 2. D1
+
+生产数据库名称是 `gold-price`，`database_id` 已写入顶层 `wrangler.toml` 的 `[[d1_databases]]`。保留 `binding = "DB"`、`database_name = "gold-price"` 和 `migrations_dir = "migrations"`。不要替换 `env.local` 的全零占位 ID。
+
+D1 database ID 是资源标识，不是鉴权密钥。任何情况下都不能把 token 写入 `wrangler.toml`。
+
+初始迁移 `0001_initial.sql` 已在远端应用，并由 Wrangler 的 `d1_migrations` 表跟踪。后续新增 `migrations/` 中的 SQL 后，在可信环境对生产库执行：
 
 ```bash
-curl --fail-with-body 'https://YOUR_WORKER_HOST/healthz'
-curl --fail-with-body 'https://YOUR_WORKER_HOST/api/latest'
+pnpm exec wrangler d1 migrations apply DB --remote
 ```
 
-健康检查应返回 `status: "ok"`；首次尚未抓取时 latest 的 `items` 为空属于正常情况。构建产物 `dist/`、`.wrangler/`、本地密钥文件和 `preview-api/` 均不提交到仓库。
+确认目标是生产数据库再执行。`pnpm db:migrate:local` 只改本地库。命令说明见 [Wrangler D1 文档](https://developers.cloudflare.com/workers/wrangler/commands/d1/)。
 
-## 6. 可选：绑定自定义域名
+## 3. Worker 与 GitHub secrets
 
-在 Cloudflare 控制台打开该 Worker 的 Settings → Domains & Routes → Add → Custom Domain，选择自己在 Cloudflare 管理的域名，等待 DNS 与证书生效。操作说明见 [Workers Custom Domains](https://developers.cloudflare.com/workers/configuration/routing/custom-domains/)。用自定义域名重新验证上面的健康检查和查询接口，后续 `INGEST_URL` 可以使用这个 HTTPS origin。
+`INGEST_TOKEN` 同时存在于 Worker secret 和 GitHub 仓库的 Actions secret；两端必须相同。`INGEST_URL` 只在 GitHub 仓库 secret 中，值为 `https://gold-price.tyler4400g.workers.dev`（HTTPS origin，不带 `/api/ingest`、路径、查询参数、片段或凭据）。scrape job 把 `INGEST_URL` 映射为 `WORKER_BASE_URL`，把 `INGEST_TOKEN` 映射为同名环境变量。
 
-## 7. 配置 GitHub Actions secrets
+轮换时在可信环境生成新的高强度随机值，同步更新 Worker secret 与 GitHub `INGEST_TOKEN`，再手动补跑 Scrape 验证。不要把值放在命令参数、文档、issue、日志、Git URL、前端代码或任何 `VITE_*` 变量中。不要把生产值写入 `.dev.vars`。不需要向 CI 提供 Cloudflare 凭据，也不需要名为 `WORKER_BASE_URL` 的仓库变量。
 
-打开 GitHub 仓库 **Settings → Secrets and variables → Actions → New repository secret**，设置以下两个 repository secrets（不是 Variables）：
-
-| Secret 名称 | 内容 | scrape job 中的环境变量 |
-| --- | --- | --- |
-| `INGEST_URL` | 已部署 Worker 的 HTTPS origin，如 `https://YOUR_WORKER_HOST`；无路径、查询参数、片段或凭据 | `WORKER_BASE_URL` |
-| `INGEST_TOKEN` | 与 Worker secret 相同的值 | `INGEST_TOKEN` |
-
-不把 `/api/ingest` 拼到 `INGEST_URL` 中，CLI 会自行添加接口路径。不需要额外设置名为 `WORKER_BASE_URL` 的仓库变量或 secret，也不需要向 CI 提供 Cloudflare 凭据。密钥经环境变量传给现有 CLI，仅在上报的 Authorization header 中使用，不写入 URL、日志或产物。也可用本机已登录的 GitHub CLI 交互写入（不要把值放进命令参数或历史记录）：
+如需手动更新：
 
 ```bash
-gh secret set INGEST_URL --repo tyler4400/gold-price
-gh secret set INGEST_TOKEN --repo tyler4400/gold-price
+pnpm exec wrangler secret put INGEST_TOKEN
+# 仅在交互提示中输入值
+printf '%s' "$INGEST_TOKEN" | gh secret set INGEST_TOKEN --repo tyler4400/gold-price
+printf '%s' 'https://gold-price.tyler4400g.workers.dev' | gh secret set INGEST_URL --repo tyler4400/gold-price
 ```
 
-在提示中粘贴对应值。agent 不代为设置这些 secrets。
+`wrangler secret put` 会立即创建一个新版本并部署，不要在即将被构建覆盖的窗口里误改其它绑定。
 
-## 8. 手动抓取与验收
+## 4. 验收
 
-将 workflows 合并到默认分支 `main` 后，在 **Actions → Scrape → Run workflow** 选择 `main` 并运行。合并本身仅触发 CI，不触发 scrape 或 keepalive；缺少 secret 不会导致合并瞬间自动抓取失败，但后续定时/手动 scrape 会明确失败。
+```bash
+curl --fail-with-body 'https://gold-price.tyler4400g.workers.dev/healthz'
+curl --fail-with-body 'https://gold-price.tyler4400g.workers.dev/api/latest'
+```
+
+健康检查应返回 `status: "ok"`；尚未抓取时 latest 的 `items` 为空属于正常情况。构建产物 `dist/`、`.wrangler/`、本地密钥文件和 `preview-api/` 均不提交到仓库。
+
+在 **Actions → Scrape → Run workflow** 选择 `main` 并运行。合并本身只触发 CI 和（若有代码变更）Workers Builds，不触发 scrape 或 keepalive。
 
 在运行详情中检查 **Check ingest secrets** 和 **Scrape and upload**：
 
@@ -91,17 +82,15 @@ gh secret set INGEST_TOKEN --repo tyler4400/gold-price
 - CLI JSON 日志的 `summary.uploaded` 应为 `true`、`exit_code` 为 `0`，并包含 `accepted`、`updated`、`ignored` 计数。失败时查看 `error`、逐项 `failures` 或 `upload_error` 的脱敏摘要。
 - 失败判定沿用现有 CLI：`sge_au9999` 和 `china_gold_base` 两项都失败、无有效记录或上报失败均退出非 0；一个关键项成功且上报成功即可通过，个别品牌失败不补造数据。
 
-随后查询最新价：
-
-```bash
-curl --fail-with-body 'https://YOUR_WORKER_HOST/api/latest'
-```
-
-确认 `items` 非空，包含 `sge_au9999`、`china_gold_base` 两个关键项，核对各项 `date`、`fetched_at` 和价格。若某关键项缺失，即使 job 因另一项成功而通过，也应按失败摘要排查对应来源并手动补跑。已有旧数据不会因源失败被删除，所以“存在该项”不等于“本轮刷新成功”；要同时检查日期和本轮摘要。节假日或源站未更新时不要把旧报价日期当作今天。
+随后再查 `/api/latest`，确认 `items` 非空，包含 `sge_au9999`、`china_gold_base` 两个关键项，核对各项 `date`、`fetched_at` 和价格。若某关键项缺失，即使 job 因另一项成功而通过，也应按失败摘要排查对应来源并手动补跑。已有旧数据不会因源失败被删除，所以“存在该项”不等于“本轮刷新成功”；要同时检查日期和本轮摘要。节假日或源站未更新时不要把旧报价日期当作今天。
 
 上报失败时先核对 URL 格式与两端密钥一致性、Worker secret 是否存在及远端迁移是否完成；401 常为鉴权不匹配，503 需检查服务端配置或数据库。修复后重新 **Run workflow**。不要将完整敏感配置贴入 issue 或日志。
 
-## 9. 调度、CI 与保活
+## 5. 可选：绑定自定义域名
+
+默认使用 workers.dev。若要绑定自定义域名，在 Cloudflare 控制台打开该 Worker 的 Settings → Domains & Routes → Add → Custom Domain，选择自己在 Cloudflare 管理的域名，等待 DNS 与证书生效。操作说明见 [Workers Custom Domains](https://developers.cloudflare.com/workers/configuration/routing/custom-domains/)。用自定义域名重新验证健康检查和查询接口，并把 GitHub 的 `INGEST_URL` 改成这个 HTTPS origin。
+
+## 6. 调度、CI 与保活
 
 | Workflow | 触发条件 | 权限与行为 |
 | --- | --- | --- |

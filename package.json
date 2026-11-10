@@ -18,6 +18,7 @@
   "scripts": {
     "dev": "vite",
     "build": "pnpm typecheck && vite build",
+    "deploy": "wrangler deploy",
     "preview": "vite preview",
     "lint": "oxlint --deny-warnings src scripts worker ingest vite.config.ts vitest.config.ts",
     "typecheck": "tsc -b",

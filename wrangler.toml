@@ -9,11 +9,11 @@ binding = "ASSETS"
 not_found_handling = "single-page-application"
 run_worker_first = ["/healthz", "/api", "/api/*"]
 
-# 远端数据库由维护者创建后填写；仓库保留占位符。
+# 生产 D1 已创建；database_id 是资源标识不是密钥。env.local 仍使用全零占位 ID。
 [[d1_databases]]
 binding = "DB"
 database_name = "gold-price"
-database_id = "YOUR_D1_DATABASE_ID"
+database_id = "752f61f4-2098-41c4-819e-eff502c4ceda"
 migrations_dir = "migrations"
 
 # D1 绑定不会继承到命名环境；本地使用独立、非远端的占位 ID。
@@ -27,6 +27,19 @@ database_id = "00000000-0000-0000-0000-000000000000"
 migrations_dir = "migrations"
 
 [env.local.assets]
+directory = "./dist"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+run_worker_first = ["/healthz", "/api", "/api/*"]
+
+# 分支预览使用独立 D1，不指向生产库。
+[[previews.d1_databases]]
+binding = "DB"
+database_name = "gold-price-preview"
+database_id = "41ec1873-6388-4be8-a544-761c03251227"
+migrations_dir = "migrations"
+
+[previews.assets]
 directory = "./dist"
 binding = "ASSETS"
 not_found_handling = "single-page-application"
