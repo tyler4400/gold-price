@@ -10,3 +10,6 @@ dist/
 *.tsbuildinfo
 *.log
 .DS_Store
+
+# Local CVM preview snapshots (never commit captured prices).
+preview-api/

@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "license": "AGPL-3.0-only",
-  "description": "公开金价走势与到价提醒（阶段③ API 与 D1）",
+  "description": "公开金价走势与到价提醒（阶段④完整行情前端）",
   "packageManager": "pnpm@10.32.1",
   "engines": {
     "node": ">=24"
@@ -19,7 +19,7 @@
     "dev": "vite",
     "build": "pnpm typecheck && vite build",
     "preview": "vite preview",
-    "lint": "oxlint --deny-warnings src worker ingest vite.config.ts vitest.config.ts",
+    "lint": "oxlint --deny-warnings src scripts worker ingest vite.config.ts vitest.config.ts",
     "typecheck": "tsc -b",
     "worker:dev": "wrangler dev --env local --local",
     "test": "pnpm test:ingest && pnpm test:worker",
@@ -27,12 +27,14 @@
     "ingest:dry": "node ingest/cli.ts --dry-run",
     "test:ingest": "node --test ingest/tests/*.test.ts",
     "test:worker": "vitest run",
-    "db:migrate:local": "wrangler d1 migrations apply DB --env local --local"
+    "db:migrate:local": "wrangler d1 migrations apply DB --env local --local",
+    "preview:snapshot": "node scripts/preview-snapshot.ts"
   },
   "dependencies": {
     "@radix-ui/react-slot": "^1.2.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "echarts": "^6.1.0",
     "lucide-react": "^1.59.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
