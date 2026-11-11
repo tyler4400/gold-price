@@ -2,12 +2,12 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { IngestError, ITEM_KEYS, positive, record, shanghaiDate } from '../core.ts';
-import { decode } from '../http.ts';
+import { createRequester, decode } from '../http.ts';
 import { parseSge, parseInternational, fetchSina, SINA_URLS, TROY_OUNCE_GRAMS } from '../adapters/sina.ts';
 import { parseChinaGold } from '../adapters/china-gold.ts';
 import { parseLukfook, LUKFOOK_SOURCE_URL } from '../adapters/lukfook.ts';
-import { parseChowSangSang } from '../adapters/chow-sang-sang.ts';
-import { parseBrands } from '../adapters/brands.ts';
+import { CSS_SOURCE_URL, fetchChowSangSang, parseChowSangSang } from '../adapters/chow-sang-sang.ts';
+import { BRANDS_SOURCE_URL, parseBrands } from '../adapters/brands.ts';
 import { collect, collectionExitCode } from '../pipeline.ts';
 import type { RequestText } from '../http.ts';
 const now = new Date('2026-11-10T09:05:00.000Z');
@@ -97,6 +97,34 @@ test('周生生从 JSON 取足金饰品卖出，保留明确日期', () => {
   assert.equal(result.notes.length, 0);
   assert.equal(parseChowSangSang('<script src="/akamai.js"></script>' + css, now).records[0]?.price, 1243);
 });
+test('周生生使用 30 秒超时，网络故障恢复后解析有效报价', async () => {
+  let calls = 0;
+  const sleeps: number[] = [];
+  const http = createRequester({ fetch: async url => {
+    assert.equal(url, CSS_SOURCE_URL);
+    if (++calls < 3) throw new Error('connection reset');
+    return new Response(css);
+  }, sleep: async ms => { sleeps.push(ms); } });
+  const result = await fetchChowSangSang((url, options) => {
+    assert.equal(options?.timeoutMs, 30_000);
+    return http(url, options);
+  }, () => now);
+  assert.equal(calls, 3);
+  assert.deepEqual(sleeps, [1000, 2000]);
+  assert.equal(result.records[0]?.price, 1243);
+  assert.equal(result.failures.length, 0);
+});
+test('周生生挑战页、空价与错误结构不触发官网 HTTP 重试，转入兜底', async () => {
+  for (const [path, code] of [['challenge.html', 'challenge'], ['css-empty.html', 'price'], ['css-no-sell.html', 'structure']]) {
+    let calls = 0;
+    const request = createRequester({ fetch: async () => { calls++; return new Response(fixture(`negative/${path}`)); },
+      sleep: async () => { assert.fail('解析失败不应退避'); } });
+    const result = await fetchChowSangSang(request, () => now);
+    assert.equal(result.records.length, 0);
+    assert.deepEqual(result.failures.map(f => [f.source, f.code]), [['chow-sang-sang', code], ['brands', 'structure']]);
+    assert.equal(calls, 2); // One official request, then one fallback request; neither is retried.
+  }
+});
 test('周生生挑战页、无卖出、空价及脚本表达式均失败，不执行脚本', () => {
   throwsCode(() => parseChowSangSang(fixture('negative/challenge.html'), now), 'challenge');
   throwsCode(() => parseChowSangSang(fixture('negative/css-empty.html'), now), 'price');
@@ -166,6 +194,32 @@ test('完整离线管线产生 11 项合法六字段记录，每源一次（新�
     assert.equal(r.fetched_at, now.toISOString());
     assert.ok(r.price > 0 && Number.isFinite(r.price));
     assert.equal(r.price, Number(r.price.toFixed(2)));
+  }
+});
+test('周生生超时或网络重试耗尽后兜底成功，其它十项仍可上报', async () => {
+  for (const code of ['timeout', 'network']) {
+    let calls = 0;
+    const sleeps: number[] = [];
+    const http = createRequester({ fetch: async (_url, init) => {
+      calls++;
+      if (code === 'network') throw new Error('connection reset');
+      return new Promise<never>((_resolve, reject) => init?.signal?.addEventListener('abort', () => reject(new Error('timeout'))));
+    }, sleep: async ms => { sleeps.push(ms); } });
+    const result = await collect((url, options) => {
+      if (url === CSS_SOURCE_URL) return http(url, { ...options, timeoutMs: 10 });
+      if (url === BRANDS_SOURCE_URL) return Promise.resolve(brands + fixture('chow-sang-sang-fallback.gbk.html', 'gbk'));
+      return request(url, options);
+    }, () => now);
+    assert.equal(calls, 3);
+    assert.deepEqual(sleeps, [1000, 2000]);
+    assert.equal(result.records.length, 11);
+    const cssRecords = result.records.filter(r => r.item_key === 'chow_sang_sang_jewelry');
+    assert.equal(cssRecords.length, 1);
+    assert.equal(cssRecords[0]?.price, 1212);
+    assert.equal(cssRecords[0]?.source_url, BRANDS_SOURCE_URL);
+    assert.deepEqual(result.failures.map(f => [f.source, f.item_key, f.code]), [['chow-sang-sang', 'chow_sang_sang_jewelry', code]]);
+    assert.equal(collectionExitCode(result), 0);
+    assert.match(result.notes.join(''), /已使用聚合站兜底/);
   }
 });
 test('关键项任一有效 exit 0，两项全坏或无记录 exit 1，异常不会抹去其他源', async () => {

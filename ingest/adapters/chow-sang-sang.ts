@@ -1,7 +1,8 @@
 import { load } from 'cheerio';
-import { array, emptyResult, IngestError, json, object, record, shanghaiDate } from '../core.ts';
+import { array, emptyResult, failure, IngestError, json, object, record, shanghaiDate } from '../core.ts';
 import type { Result } from '../core.ts';
 import type { RequestText } from '../http.ts';
+import { BRANDS_SOURCE_URL, CSS_FALLBACK_BRAND, fetchBrands } from './brands.ts';
 export const CSS_SOURCE_URL = 'https://cn.chowsangsang.com/gold-info';
 export function parseChowSangSang(html: string, now: Date): Result {
   // Normal pages can load Akamai scripts too; the vendor name alone is not a challenge.
@@ -24,5 +25,22 @@ export function parseChowSangSang(html: string, now: Date): Result {
   return result;
 }
 export async function fetchChowSangSang(request: RequestText, now: () => Date): Promise<Result> {
-  return parseChowSangSang(await request(CSS_SOURCE_URL), now());
+  const result = emptyResult();
+  try {
+    // This source can respond slowly; each attempt includes both headers and body.
+    return parseChowSangSang(await request(CSS_SOURCE_URL, { timeoutMs: 30_000 }), now());
+  } catch (error) {
+    result.failures.push(failure(error, 'chow-sang-sang', CSS_FALLBACK_BRAND.key, now()));
+  }
+  try {
+    const fallback = await fetchBrands(request, now, [CSS_FALLBACK_BRAND]);
+    result.records.push(...fallback.records);
+    result.failures.push(...fallback.failures);
+  } catch (error) {
+    result.failures.push(failure(error, 'brands', CSS_FALLBACK_BRAND.key, now()));
+  }
+  result.notes.push(result.records.length
+    ? `周生生官网失败，已使用聚合站兜底：${BRANDS_SOURCE_URL}（周生生 / 黄金价格，元/克）；source_url 指向实际来源。`
+    : '周生生官网及聚合站兜底均失败，不生成上报记录，保留已存价格。');
+  return result;
 }

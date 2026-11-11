@@ -5,15 +5,20 @@ import type { RequestText } from '../http.ts';
 export const BRANDS_SOURCE_URL = 'https://www.huangjinjiage.cn/pinpaijinjia.html';
 // Product labels are per-brand allowlists, based on the saved retail tables.
 // 菜百 selects 足金价格, not 足金999价格 or 饰品金条价格.
-export const BRANDS: readonly { key: ItemKey; aliases: readonly string[]; product: string }[] = [
+interface Brand { key: ItemKey; aliases: readonly string[]; product: string }
+export const BRANDS: readonly Brand[] = [
   { key: 'chow_tai_fook_jewelry', aliases: ['周大福'], product: '首饰黄金价格' },
   { key: 'lao_feng_xiang_jewelry', aliases: ['老凤祥'], product: '黄金价格' },
   { key: 'lao_miao_jewelry', aliases: ['老庙黄金', '老庙'], product: '黄金价格' },
   { key: 'chow_tai_seng_jewelry', aliases: ['周大生'], product: '黄金价格' },
   { key: 'caibai_jewelry', aliases: ['菜百首饰', '菜百黄金'], product: '足金价格' },
 ];
+// Kept out of BRANDS: the official adapter alone decides whether to use this row.
+export const CSS_FALLBACK_BRAND: Brand = {
+  key: 'chow_sang_sang_jewelry', aliases: ['周生生'], product: '黄金价格',
+};
 const clean = (text: string) => text.replace(/\s+/g, '').trim();
-export function parseBrands(html: string, now: Date): Result {
+export function parseBrands(html: string, now: Date, brands: readonly Brand[] = BRANDS): Result {
   const $ = load(html);
   const result = emptyResult();
   const candidates = new Map<ItemKey, { price: string | undefined; date: string | undefined; valid: boolean }[]>();
@@ -33,7 +38,7 @@ export function parseBrands(html: string, now: Date): Result {
     if ([brandCol, productCol, priceCol, dateCol].some(i => i < 0)) return;
     rows.slice(1).each((_j, row) => {
       const cells = $(row).children('td').toArray().map(cell => clean($(cell).text()));
-      const brand = BRANDS.find(b => b.aliases.includes(cells[brandCol] ?? '') && cells[productCol] === b.product);
+      const brand = brands.find(b => b.aliases.includes(cells[brandCol] ?? '') && cells[productCol] === b.product);
       if (!brand) return;
       const priceCell = cells[priceCol] ?? '';
       const match = /^(\d+(?:\.\d+)?)元\/克$/.exec(priceCell);
@@ -45,7 +50,7 @@ export function parseBrands(html: string, now: Date): Result {
       candidates.set(brand.key, list);
     });
   });
-  for (const brand of BRANDS) attempt(result, 'brands', brand.key, now, () => {
+  for (const brand of brands) attempt(result, 'brands', brand.key, now, () => {
     const matches = candidates.get(brand.key) ?? [];
     if (matches.length !== 1) throw new IngestError('structure', '品牌及饰品产品行缺失或重复');
     const row = matches[0];
@@ -54,6 +59,6 @@ export function parseBrands(html: string, now: Date): Result {
   });
   return result;
 }
-export async function fetchBrands(request: RequestText, now: () => Date): Promise<Result> {
-  return parseBrands(await request(BRANDS_SOURCE_URL, { encoding: 'gbk' }), now());
+export async function fetchBrands(request: RequestText, now: () => Date, brands: readonly Brand[] = BRANDS): Promise<Result> {
+  return parseBrands(await request(BRANDS_SOURCE_URL, { encoding: 'gbk' }), now(), brands);
 }

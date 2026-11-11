@@ -12,8 +12,8 @@ export async function main(args = process.argv.slice(2), env = process.env, depe
   const print = dependencies.print ?? console.log;
   try {
     const flags = args.filter(arg => arg !== '--');
-    if (flags.some(arg => !['--dry-run', '--upload'].includes(arg)) || (flags.includes('--dry-run') && flags.includes('--upload'))) {
-      throw new IngestError('config', '用法：pnpm ingest [--dry-run | --upload]；默认 dry-run');
+    if (flags.some(arg => !['--network', '--dry-run', '--upload'].includes(arg)) || (flags.includes('--dry-run') && flags.includes('--upload'))) {
+      throw new IngestError('config', '用法：pnpm ingest [--network] [--dry-run | --upload]；默认联网 dry-run');
     }
     const dryRun = !flags.includes('--upload');
     const config = dryRun ? undefined : uploadConfig(env);

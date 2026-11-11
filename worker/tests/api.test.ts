@@ -4,6 +4,10 @@ import { Miniflare, convertV4MiniflareOptions } from 'miniflare';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { historyBounds } from '../index.ts';
 import type { PriceRecord } from '../../ingest/core.ts';
+import { IngestError } from '../../ingest/core.ts';
+import { main } from '../../ingest/cli.ts';
+import { collect } from '../../ingest/pipeline.ts';
+import { CSS_SOURCE_URL } from '../../ingest/adapters/chow-sang-sang.ts';
 
 // Generated per test run, never an operational credential or a value written to disk.
 const token = crypto.randomUUID();
@@ -101,6 +105,53 @@ it('normalizes fractional ISO seconds before comparing timestamps and rounds to 
   expect(await (await post([sample({ fetched_at: '2026-01-02T09:00:00.1Z', price: 1.235 })])).json()).toEqual({ accepted: 1, updated: 1, ignored: 0 });
   expect(await (await post([sample({ fetched_at: '2026-01-02T09:00:00Z' })])).json()).toEqual({ accepted: 0, updated: 0, ignored: 1 });
   expect(await rows()).toEqual([sample({ fetched_at: '2026-01-02T09:00:00.100Z', price: 1.24 })]);
+});
+
+it('six same-day brand uploads upsert one row; replaying an older run cannot roll back its price', async () => {
+  const brand = sample({ item_key: 'chow_sang_sang_jewelry', source_url: CSS_SOURCE_URL, price: 1243 });
+  for (let run = 0; run < 6; run++) {
+    const record = { ...brand, price: brand.price + run, fetched_at: `2026-01-02T09:${run}0:00.000Z` };
+    expect(await (await post([record])).json()).toEqual({ accepted: 1, updated: run === 0 ? 0 : 1, ignored: 0 });
+    expect(await rows()).toEqual([record]);
+  }
+  expect(await (await post([brand])).json()).toEqual({ accepted: 0, updated: 0, ignored: 1 });
+  expect(await rows()).toEqual([{ ...brand, price: 1248, fetched_at: '2026-01-02T09:50:00.000Z' }]);
+});
+
+it.each(['timeout', 'network', 'challenge', 'price'] as const)('a failed brand (%s) is omitted by the CLI and preserves existing prices in D1', async code => {
+  const brand = sample({ item_key: 'chow_sang_sang_jewelry', source_url: CSS_SOURCE_URL, price: 1243 });
+  const existing = [{ ...brand, date: '2026-01-01' }, brand];
+  await seed(existing);
+  let uploads = 0;
+  const exitCode = await main(['--upload'], { WORKER_BASE_URL: origin, INGEST_TOKEN: token }, {
+    collect: () => collect(async url => {
+      if (url === CSS_SOURCE_URL) throw new IngestError(code, '周生生抓取失败');
+      if (url.includes('/page/board')) return readFileSync('ingest/fixtures/china.json', 'utf8');
+      throw new IngestError('network', '其它源不可用');
+    }, () => new Date('2026-01-02T10:00:00Z')),
+    request: async (url, options) => {
+      uploads++;
+      const body = JSON.parse(options?.body ?? '{}');
+      expect(body.records).toHaveLength(2);
+      expect(body.records.every((r: PriceRecord) => r.item_key !== brand.item_key)).toBe(true);
+      const response = await mf.dispatchFetch(url, { method: options?.method, headers: options?.headers, body: options?.body });
+      expect(response.status).toBe(200);
+      return response.text();
+    },
+    print: () => {},
+  });
+  expect(exitCode).toBe(0);
+  expect(uploads).toBe(1);
+  const stored = await rows();
+  expect(stored).toHaveLength(4);
+  expect(stored.filter(r => r.item_key === brand.item_key)).toEqual(existing);
+});
+
+it('accepts the Chow Sang Sang aggregator fallback source, but not for other official-source items', async () => {
+  const fallback = sample({ item_key: 'chow_sang_sang_jewelry', source_url: 'https://www.huangjinjiage.cn/pinpaijinjia.html', price: 1212 });
+  expect(await (await post([fallback])).json()).toEqual({ accepted: 1, updated: 0, ignored: 0 });
+  expect(await rows()).toEqual([fallback]);
+  await expectError(await post([sample({ item_key: 'lukfook_jewelry', source_url: 'https://www.huangjinjiage.cn/pinpaijinjia.html' })]), 400);
 });
 
 it('concurrent upserts keep the newest timestamp with consistent counts', async () => {
