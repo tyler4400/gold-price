@@ -24,10 +24,11 @@ export function drawChart(
   dark: boolean,
 ) {
   const chart = init(element, undefined, { renderer: "svg" });
+  const styles = getComputedStyle(element);
   // Match the light/dark semantic tokens in index.css.
   const muted = dark ? "#b6ac99" : "#6b604e";
   const border = dark ? "#443a28" : "#d8ccb5";
-  const gold = dark ? "#d4b77e" : "#79581f";
+  const gold = styles.getPropertyValue("--gold-chart").trim();
   const option: EChartsCoreOption = {
     animation: false,
     grid: { left: 12, right: 18, top: 24, bottom: 12, containLabel: true },
@@ -57,8 +58,8 @@ export function drawChart(
       splitNumber: 5,
       axisPointer: {
         label: {
-          backgroundColor: dark ? "#d4b77e" : "#79581f",
-          color: dark ? "#171610" : "#fffdf8",
+          backgroundColor: styles.getPropertyValue("--range-fill").trim(),
+          color: styles.getPropertyValue("--range-ink").trim(),
           formatter: (params: { value: unknown }) =>
             fullDate.format(Number(params.value)),
         },
