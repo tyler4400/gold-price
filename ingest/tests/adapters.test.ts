@@ -7,7 +7,7 @@ import { parseSge, parseInternational, fetchSina, SINA_URLS, TROY_OUNCE_GRAMS } 
 import { parseChinaGold } from '../adapters/china-gold.ts';
 import { parseLukfook, LUKFOOK_SOURCE_URL } from '../adapters/lukfook.ts';
 import { CSS_SOURCE_URL, fetchChowSangSang, parseChowSangSang } from '../adapters/chow-sang-sang.ts';
-import { parseBrands } from '../adapters/brands.ts';
+import { BRANDS_SOURCE_URL, parseBrands } from '../adapters/brands.ts';
 import { collect, collectionExitCode } from '../pipeline.ts';
 import type { RequestText } from '../http.ts';
 const now = new Date('2026-11-10T09:05:00.000Z');
@@ -114,13 +114,15 @@ test('周生生使用 30 秒超时，网络故障恢复后解析有效报价', a
   assert.equal(result.records[0]?.price, 1243);
   assert.equal(result.failures.length, 0);
 });
-test('周生生挑战页、空价与错误结构不触发 HTTP 重试', async () => {
+test('周生生挑战页、空价与错误结构不触发官网 HTTP 重试，转入兜底', async () => {
   for (const [path, code] of [['challenge.html', 'challenge'], ['css-empty.html', 'price'], ['css-no-sell.html', 'structure']]) {
     let calls = 0;
     const request = createRequester({ fetch: async () => { calls++; return new Response(fixture(`negative/${path}`)); },
       sleep: async () => { assert.fail('解析失败不应退避'); } });
-    await assert.rejects(fetchChowSangSang(request, () => now), (e: unknown) => e instanceof IngestError && e.code === code);
-    assert.equal(calls, 1);
+    const result = await fetchChowSangSang(request, () => now);
+    assert.equal(result.records.length, 0);
+    assert.deepEqual(result.failures.map(f => [f.source, f.code]), [['chow-sang-sang', code], ['brands', 'structure']]);
+    assert.equal(calls, 2); // One official request, then one fallback request; neither is retried.
   }
 });
 test('周生生挑战页、无卖出、空价及脚本表达式均失败，不执行脚本', () => {
@@ -194,7 +196,7 @@ test('完整离线管线产生 11 项合法六字段记录，每源一次（新�
     assert.equal(r.price, Number(r.price.toFixed(2)));
   }
 });
-test('周生生超时或网络重试耗尽仅产生 failure，其它十项仍可上报', async () => {
+test('周生生超时或网络重试耗尽后兜底成功，其它十项仍可上报', async () => {
   for (const code of ['timeout', 'network']) {
     let calls = 0;
     const sleeps: number[] = [];
@@ -203,14 +205,21 @@ test('周生生超时或网络重试耗尽仅产生 failure，其它十项仍可
       if (code === 'network') throw new Error('connection reset');
       return new Promise<never>((_resolve, reject) => init?.signal?.addEventListener('abort', () => reject(new Error('timeout'))));
     }, sleep: async ms => { sleeps.push(ms); } });
-    const result = await collect((url, options) => url === CSS_SOURCE_URL
-      ? http(url, { ...options, timeoutMs: 10 }) : request(url, options), () => now);
+    const result = await collect((url, options) => {
+      if (url === CSS_SOURCE_URL) return http(url, { ...options, timeoutMs: 10 });
+      if (url === BRANDS_SOURCE_URL) return Promise.resolve(brands + fixture('chow-sang-sang-fallback.gbk.html', 'gbk'));
+      return request(url, options);
+    }, () => now);
     assert.equal(calls, 3);
     assert.deepEqual(sleeps, [1000, 2000]);
-    assert.equal(result.records.length, 10);
-    assert.ok(result.records.every(r => r.item_key !== 'chow_sang_sang_jewelry'));
+    assert.equal(result.records.length, 11);
+    const cssRecords = result.records.filter(r => r.item_key === 'chow_sang_sang_jewelry');
+    assert.equal(cssRecords.length, 1);
+    assert.equal(cssRecords[0]?.price, 1212);
+    assert.equal(cssRecords[0]?.source_url, BRANDS_SOURCE_URL);
     assert.deepEqual(result.failures.map(f => [f.source, f.item_key, f.code]), [['chow-sang-sang', 'chow_sang_sang_jewelry', code]]);
     assert.equal(collectionExitCode(result), 0);
+    assert.match(result.notes.join(''), /已使用聚合站兜底/);
   }
 });
 test('关键项任一有效 exit 0，两项全坏或无记录 exit 1，异常不会抹去其他源', async () => {

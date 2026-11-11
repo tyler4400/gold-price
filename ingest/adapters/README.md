@@ -2,6 +2,8 @@
 
 本机入口 `pnpm ingest:dry`（或 `pnpm ingest -- --dry-run`）；`pnpm ingest` 也默认 dry-run。仅 `--upload` 启用上报客户端，阶段③已实现 Worker 接口，本地迁移、密钥和上传步骤见 [README](../../README.md)。`pnpm test:ingest` 只读取仓库 fixtures，不访问网络；`pnpm test` 还包含本地 Worker/D1 测试。
 
+显式联网实测：`pnpm ingest -- --network --dry-run`。`--network` 表明使用真实网络（与现有默认行为一致），`--dry-run` 只打印记录、failures 和 notes，不向生产上报；不能同时传 `--upload`。
+
 每个源一个 adapter，返回 `{ records, failures, notes }`。成功记录严格只有 `date/item_key/price/unit/source_url/fetched_at` 六字段；价格是舍入至分的 JSON number（JSON 不保留 `.00` 尾零），单位 `CNY/g`。失败、日期降级说明和汇率来源放在旁边，不进入上报记录。明确的旧报价日期保持原值，不改写为当天，不生成历史。
 
 ## 请求与解析
@@ -11,8 +13,8 @@
 | `sina.ts` | 三个 GET，`Referer: https://finance.sina.com.cn`，GB18030；固定赋值变量名、CSV 字段数、字段位置及行情名称 | Au99.99：[展示页](https://finance.sina.com.cn/futures/quotes/AU9999.shtml)；国际：[展示页](https://finance.sina.com.cn/futures/quotes/XAU.shtml)；均使用行情日期 |
 | `china-gold.ts` | POST `https://www.chnau99999.com/page/board`，空字符串 body，`Content-Length: 0`；`data.cur` 基础金价，`data.accessories` 足金饰品，逐项校验 | 实抓响应无报价日期，使用抓取时刻 Asia/Shanghai 日期并输出 notes；[展示页](https://www.chnau99999.com/page/goldPrice) |
 | `lukfook.ts` | GET `https://www.lukfook.com/api/goldprice`；仅 `data.cn.data` 的 `足金999(克)`，缺该产品才选 `足金(克)`；取 `賣出(RMB)`，不取換購、香港或金条；首选产品空价按失败处理 | API 无报价日期，使用上海抓取日期并输出 notes；[内地金价展示页](https://www.lukfook.com/sc/page/goldprice) |
-| `chow-sang-sang.ts` | GET `https://cn.chowsangsang.com/gold-info`；DOM 定位唯一 `gold-info-page`，仅 JSON.parse `:gold-prices` 属性，精确 `足金饰品 (每克）` → `卖出`；挑战页失败，不执行 JS | 组件 `time` 的报价日期，缺失时上海抓取日期并输出 notes；同 URL 展示 |
-| `brands.ts` | 一次 GET `https://www.huangjinjiage.cn/pinpaijinjia.html`，GBK；DOM 逐表按表头定位品牌、产品、价格、日期；逐品牌校验 | 使用各行日期；同 HTTPS URL 展示 |
+| `chow-sang-sang.ts` | 优先 GET `https://cn.chowsangsang.com/gold-info`；DOM 定位唯一 `gold-info-page`，仅 JSON.parse `:gold-prices` 属性，精确 `足金饰品 (每克）` → `卖出`；官网请求或解析失败才调用 `brands.ts`，按 GBK 读取聚合页，精确选择 `周生生` → `黄金价格`；不执行 JS | 官网采用组件 `time` 报价日期，缺失时上海抓取日期并输出 notes；兜底采用聚合表行日期。`source_url` 随实际来源切换为官网或聚合页 |
+| `brands.ts` | 每次调用 GET `https://www.huangjinjiage.cn/pinpaijinjia.html`，GBK；DOM 逐表按表头定位品牌、产品、价格、日期；默认抓下面五个常规品牌，周生生由官网 adapter 在失败后单独调用同一解析 | 使用各行日期；同 HTTPS URL 展示 |
 
 ### 新浪字段与国际折算
 
@@ -35,8 +37,15 @@
 | `lao_miao_jewelry` | 老庙黄金、老庙 | 黄金价格 |
 | `chow_tai_seng_jewelry` | 周大生 | 黄金价格 |
 | `caibai_jewelry` | 菜百首饰、菜百黄金 | 足金价格 |
+| `chow_sang_sang_jewelry`（仅官网失败时） | 周生生 | 黄金价格 |
 
 `黄金价格` 是此源对应品牌零售表的既有标签，旁边投资金条、换购、回收行不会入选。菜百的 `足金价格` 与 `足金999价格` 分开，固定选前者，不把纯度更高产品或饰品金条混入。单品牌失败不会抹去其它有效品牌。
+
+### 周生生官网优先与聚合站兜底
+
+2026-11-11 实抓聚合页 `#price8` 的“周生生黄金价格”区块：`周生生 / 黄金价格` 为 1212 元/克，日期为 `2026-11-11`；同表另列 `PT950铂金价格`（597）、`黄金换购价格`（1019）、`铂金换购价格`（479）和 `工艺金条价格`（1065）。这里采用零售黄金首饰挂牌价一行，对应本站足金饰品项；来源原标签为“黄金价格”，不额外推断 999/9999 等细分纯度。上述其它产品严格排除，目标行缺失时不能拿它们补位。含全部五行的原 GBK 片段保存在 `chow-sang-sang-fallback.gbk.html`，单测覆盖产品区分、单位、日期、空价及重复行。
+
+官网成功立即返回官网报价，`source_url` 保持官网，常规品牌采集不会另行输出周生生。官网在 HTTP/重定向、超时或网络重试耗尽、挑战页、结构、价格、日期等任一环节失败后，才尝试兜底。兜底成功时 `source_url` 为 `https://www.huangjinjiage.cn/pinpaijinjia.html`，页面品牌链接直接使用记录中的实际来源；报告 `notes` 明确“已使用聚合站兜底”，`failures` 保留官网失败原因（所以同一项可以既有成功记录又有官网失败诊断）。两边都失败时记录各自原因，notes 说明保留已存价格，不生成该项上报记录，也不改写聚合站的旧报价日期。
 
 ### 六福展示页核实
 

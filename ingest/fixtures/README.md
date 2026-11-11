@@ -1,6 +1,6 @@
 # 离线 fixtures
 
-正例来自 2026-11-10 的实际 HTTPS 响应，采集时约北京时间 17:03–17:04。报价只是保存样本，不代表运行时行情；测试固定抓取时刻为 `2026-11-10T09:05:00.000Z`，不依赖测试当天、不请求外网。
+除单独注明外，正例来自 2026-11-10 的实际 HTTPS 响应，采集时约北京时间 17:03–17:04。报价只是保存样本，不代表运行时行情；测试使用固定抓取时刻，不依赖测试当天、不请求外网。
 
 | 文件 | 来源 | 保存方式 |
 | --- | --- | --- |
@@ -11,6 +11,7 @@
 | `lukfook.json` | `https://www.lukfook.com/api/goldprice` | 原 JSON，保留香港及内地数据以检测选错地区 |
 | `chow-sang-sang.html` | `https://cn.chowsangsang.com/gold-info` | 仅提取原 `gold-info-page` 组件，包括原 JSON 属性和报价时间；其余页面、会话及跟踪内容未保存 |
 | `brands.gbk.html` | `https://www.huangjinjiage.cn/pinpaijinjia.html` | 提取五品牌完整 table，按原 GBK 编码保存，含回收、投资、纯度等干扰行 |
+| `chow-sang-sang-fallback.gbk.html` | 同上，2026-11-11 实抓 | 仅提取 `#price8` 周生生区块，按原 GBK 编码保存；黄金价格 1212 元/克，保留铂金、黄金/铂金换购、工艺金条行，验证不会错取产品 |
 
 `negative/` 明确为人工构造或上述正例的衍生变体，**不是声称来源曾返回这些负例**：
 

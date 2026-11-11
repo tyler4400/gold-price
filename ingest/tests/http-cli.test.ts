@@ -101,7 +101,7 @@ test('原始字节按 GB18030/GBK 解码，坏编码不重试，所有请求禁�
   assert.equal(calls, 2);
 });
 test('默认和显式 dry-run 从不发送 ingest POST，即使环境有配置', async () => {
-  for (const args of [[], ['--dry-run'], ['--', '--dry-run']]) {
+  for (const args of [[], ['--dry-run'], ['--', '--dry-run'], ['--network'], ['--network', '--dry-run']]) {
     let requests = 0;
     const output: string[] = [];
     const code = await main(args, { INGEST_TOKEN: 'INGEST_TOKEN', WORKER_BASE_URL: 'https://YOUR_WORKER_HOST' }, {
