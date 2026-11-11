@@ -21,8 +21,9 @@ export function App() {
       <div className="content-shell">
         <header className="site-header">
           <a href="/" aria-label="金价首页" className="site-logo">
-            <span className="size-2 rounded-full bg-gold" aria-hidden="true" />
-            金价 <span>gold-price</span>
+            <img src="/logo.svg" width="32" height="32" alt="" />
+            <span className="site-wordmark">金价</span>
+            <span className="site-wordmark-en">gold-price</span>
           </a>
           <nav aria-label="外观与项目" className="flex items-center gap-1">
             <ThemeToggleButton />
