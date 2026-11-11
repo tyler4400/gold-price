@@ -24,9 +24,11 @@ export function drawChart(
   dark: boolean,
 ) {
   const chart = init(element, undefined, { renderer: "svg" });
-  const muted = dark ? "#aab4bf" : "#57606a";
-  const border = dark ? "#30363d" : "#e1e4e8";
-  const gold = dark ? "#d4ac58" : "#a97816";
+  const styles = getComputedStyle(element);
+  // Match the light/dark semantic tokens in index.css.
+  const muted = dark ? "#b6ac99" : "#6b604e";
+  const border = dark ? "#443a28" : "#d8ccb5";
+  const gold = styles.getPropertyValue("--gold-chart").trim();
   const option: EChartsCoreOption = {
     animation: false,
     grid: { left: 12, right: 18, top: 24, bottom: 12, containLabel: true },
@@ -35,9 +37,10 @@ export function drawChart(
       trigger: "axis",
       renderMode: "richText",
       confine: true,
-      backgroundColor: dark ? "#161b22" : "#ffffff",
+      backgroundColor: dark ? "#171610" : "#fffdf8",
       borderColor: border,
-      textStyle: { color: dark ? "#e6edf3" : "#1a1a1a" },
+      textStyle: { color: dark ? "#f1ece2" : "#28241c" },
+      axisPointer: { lineStyle: { color: gold, type: "dashed" } },
       valueFormatter: (value: unknown) => `${priceText(Number(value))} 元/克`,
     },
     xAxis: {
@@ -55,6 +58,8 @@ export function drawChart(
       splitNumber: 5,
       axisPointer: {
         label: {
+          backgroundColor: styles.getPropertyValue("--range-fill").trim(),
+          color: styles.getPropertyValue("--range-ink").trim(),
           formatter: (params: { value: unknown }) =>
             fullDate.format(Number(params.value)),
         },

@@ -38,8 +38,9 @@ export function SourcesFooter() {
       </p>
       <p>数据版权归原权利人所有。来源链接不代表已获得商业转载许可。</p>
       <div className="footer-bottom">
-        <span>
-          <span className="text-gold">●</span> gold-price · 公开金价，每日记录
+        <span className="footer-brand">
+          <img src="/logo.svg" width="20" height="20" alt="" />
+          gold-price · 公开金价，每日记录
         </span>
         <span>代码采用 AGPL-3.0</span>
       </div>

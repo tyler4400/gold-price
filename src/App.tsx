@@ -1,11 +1,10 @@
-import { RefreshCw } from "lucide-react";
+import { PriceAlertButton } from "@/components/price-alert-button";
 import { GithubLink } from "@/components/github-link";
 import { ThemeToggleButton } from "@/components/theme/theme-toggle-button";
 import { Quotes, BrandTable } from "@/components/quotes";
 import { HistoryChart } from "@/components/history-chart";
 import { SourcesFooter } from "@/components/sources-footer";
 import { Loading, RequestError } from "@/components/market-status";
-import { Button } from "@/components/ui/button";
 import { useMarket } from "@/hooks/use-market";
 import { parseLatest } from "@/lib/market";
 
@@ -21,8 +20,9 @@ export function App() {
       <div className="content-shell">
         <header className="site-header">
           <a href="/" aria-label="金价首页" className="site-logo">
-            <span className="size-2 rounded-full bg-gold" aria-hidden="true" />
-            金价 <span>gold-price</span>
+            <img src="/logo.svg" width="32" height="32" alt="" />
+            <span className="site-wordmark">金价</span>
+            <span className="site-wordmark-en">gold-price</span>
           </a>
           <nav aria-label="外观与项目" className="flex items-center gap-1">
             <ThemeToggleButton />
@@ -38,14 +38,7 @@ export function App() {
                 基础金价、国际参考与品牌饰品报价，在这里一起看。
               </p>
             </div>
-            <Button
-              variant="outline"
-              onClick={latest.retry}
-              disabled={latest.loading}
-            >
-              <RefreshCw aria-hidden="true" />
-              刷新行情
-            </Button>
+            <PriceAlertButton />
           </div>
           {latest.loading && <Loading>正在加载最新行情…</Loading>}
           {latest.error && (
