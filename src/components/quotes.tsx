@@ -1,7 +1,6 @@
-import { Bell, ExternalLink } from "lucide-react";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { ExternalLink } from "lucide-react";
+import type { ReactNode } from "react";
 import { Card } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import {
   comparison,
   fetchedTime,
@@ -71,14 +70,6 @@ export function Quotes({
     : failed
       ? "行情请求失败，请重试"
       : "该项尚无已入库报价";
-  const [notice, setNotice] = useState(false);
-  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  useEffect(() => () => clearTimeout(timer.current), []);
-  function remind() {
-    setNotice(true);
-    clearTimeout(timer.current);
-    timer.current = setTimeout(() => setNotice(false), 4000);
-  }
   return (
     <section
       className="quotes-grid"
@@ -92,8 +83,8 @@ export function Quotes({
         </div>
         <h2 className="mt-3 font-semibold">上金所基础金价 Au99.99</h2>
         <div className="main-price">
-          {main ? priceText(main.price) : "—"}
-          <span>元/克</span>
+          <span className="price-value">{main ? priceText(main.price) : "—"}</span>
+          <span className="price-unit">元/克</span>
         </div>
         <p className="flex flex-wrap items-center gap-2 text-sm">
           <span className="text-muted-foreground">较昨日</span>
@@ -115,17 +106,6 @@ export function Quotes({
               <p>{missing}</p>
             )}
           </div>
-          <Button onClick={remind}>
-            <Bell aria-hidden="true" />
-            设到价提醒
-          </Button>
-        </div>
-        <div
-          role="status"
-          aria-live="polite"
-          className={notice ? "notice-toast" : "sr-only"}
-        >
-          {notice ? "即将上线" : ""}
         </div>
       </Card>
       {(["xau_cny_g", "china_gold_base"] as const).map((key) => {
@@ -141,8 +121,8 @@ export function Quotes({
               </span>
             </div>
             <p className="secondary-price">
-              {item ? priceText(item.price) : "—"}
-              <span>元/克</span>
+              <span className="price-value">{item ? priceText(item.price) : "—"}</span>
+              <span className="price-unit">元/克</span>
             </p>
             <p className="text-xs text-muted-foreground">
               {item ? (

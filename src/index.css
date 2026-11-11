@@ -49,6 +49,8 @@
   --quote-gold-mid: #d4b77e;
   --quote-gold-end: #b89556;
   --quote-ink: #17140e;
+  --price-ink: #100d08;
+  --price-accent: #513812;
   --quote-muted: #2e2518;
   --quote-rule: #8b703f;
   --quote-highlight: #fff7e02e;
@@ -74,6 +76,7 @@
   --foreground: #f1ece2;
   --card: #171610;
   --gold-bright: #f2d79b;
+  --price-accent: #f2d79b;
   --gold-antique: #b39a6c;
   --gold-chart: #a88b54;
   --muted: #201e17;
@@ -323,6 +326,7 @@ main {
   gap: 16px;
 }
 .main-quote[data-slot="card"] {
+  container-type: inline-size;
   position: relative;
   grid-row: span 2;
   padding: 28px;
@@ -343,7 +347,7 @@ main {
 /* Local ink keeps dates, units and empty states legible on either gold surface. */
 .main-quote .text-muted-foreground,
 .main-quote .eyebrow,
-.main-price > span {
+.main-price .price-unit {
   color: var(--quote-muted);
 }
 .main-quote .stale-label {
@@ -360,22 +364,35 @@ main {
   border-radius: 4px;
   background: var(--quote-ink);
 }
+.main-price,
+.secondary-price {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  font-variant-numeric: lining-nums tabular-nums;
+}
+.price-value {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
 .main-price {
-  color: var(--quote-ink);
+  color: var(--price-ink);
   text-shadow: 0 1px 0 var(--quote-highlight);
   margin-top: 25px;
-  font-size: clamp(42px, 5vw, 60px);
-  line-height: 1.25;
-  font-weight: 650;
-  letter-spacing: -0.04em;
-  font-variant-numeric: tabular-nums;
+  /* Scale to the card, including narrow tablet columns and mobile layouts. */
+  font-size: clamp(48px, 18cqi, 80px);
+  line-height: 1.05;
+  font-weight: 800;
+  letter-spacing: -0.055em;
 }
-.main-price > span,
-.secondary-price > span {
+.main-price .price-unit,
+.secondary-price .price-unit {
   font-size: 12px;
   font-weight: 400;
+  line-height: 1.6;
   letter-spacing: 0;
-  margin-left: 10px;
+  text-shadow: none;
   white-space: nowrap;
 }
 .main-price + p {
@@ -395,17 +412,18 @@ main {
   border-top: 1px solid var(--quote-rule);
 }
 .secondary-quote {
+  container-type: inline-size;
   padding: 20px 24px;
 }
 .secondary-price {
-  color: var(--gold);
-  font-size: 32px;
-  font-weight: 600;
-  letter-spacing: -0.025em;
-  font-variant-numeric: tabular-nums;
-  margin: 8px 0 6px;
+  color: var(--price-accent);
+  font-size: clamp(32px, 12cqi, 42px);
+  line-height: 1.15;
+  font-weight: 750;
+  letter-spacing: -0.035em;
+  margin: 12px 0 10px;
 }
-.secondary-price > span {
+.secondary-price .price-unit {
   color: var(--muted-foreground);
 }
 .quote-badge,
@@ -675,10 +693,11 @@ main {
   background: var(--gold-wash);
 }
 .brand-price {
-  color: var(--gold);
-  font-size: 17px;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
+  color: var(--price-accent);
+  font-size: 20px;
+  font-weight: 750;
+  letter-spacing: -0.025em;
+  font-variant-numeric: lining-nums tabular-nums;
 }
 .missing-price,
 .comparison-date {
@@ -771,9 +790,6 @@ main {
   .main-quote[data-slot="card"] {
     padding: 24px 20px;
   }
-  .main-price {
-    font-size: 52px;
-  }
   .secondary-quote {
     padding: 20px;
   }
@@ -839,7 +855,7 @@ main {
     display: block;
   }
   .brand-price {
-    font-size: 15px;
+    font-size: 16px;
   }
   .brand-table .price-change {
     padding: 3px 5px;
