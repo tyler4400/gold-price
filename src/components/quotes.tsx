@@ -36,6 +36,9 @@ export function Change({ item }: { item?: LatestItem }) {
   const value = comparison(item);
   return (
     <span className={`price-change ${value.tone}`} title={value.basis}>
+      {value.tone !== "neutral" && (
+        <span aria-hidden="true">{value.tone === "up" ? "↑ " : "↓ "}</span>
+      )}
       {value.text}
     </span>
   );
@@ -115,7 +118,7 @@ export function Quotes({
               <p>{missing}</p>
             )}
           </div>
-          <Button variant="outline" onClick={remind}>
+          <Button onClick={remind}>
             <Bell aria-hidden="true" />
             设到价提醒
           </Button>
