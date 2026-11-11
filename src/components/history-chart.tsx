@@ -29,11 +29,7 @@ function Plot({ history }: { history: History }) {
     void import("@/lib/chart")
       .then(({ drawChart }) => {
         if (disposed || !container.current) return;
-        const chart = drawChart(
-          container.current,
-          history,
-          resolvedTheme === "dark",
-        );
+        const chart = drawChart(container.current, history);
         const observer = new ResizeObserver(() => chart.resize());
         observer.observe(container.current);
         cleanup = () => {

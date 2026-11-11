@@ -115,7 +115,7 @@ export function Quotes({
               <p>{missing}</p>
             )}
           </div>
-          <Button variant="outline" onClick={remind}>
+          <Button variant="default" onClick={remind}>
             <Bell aria-hidden="true" />
             设到价提醒
           </Button>

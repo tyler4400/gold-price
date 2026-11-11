@@ -21,13 +21,14 @@ const fullDate = new Intl.DateTimeFormat("en-CA", {
 export function drawChart(
   element: HTMLDivElement,
   history: History,
-  dark: boolean,
 ) {
   const chart = init(element, undefined, { renderer: "svg" });
-  // Match the light/dark semantic tokens in index.css.
-  const muted = dark ? "#b6ac99" : "#6b604e";
-  const border = dark ? "#443a28" : "#d8ccb5";
-  const gold = dark ? "#d4b77e" : "#79581f";
+  // Read the active theme's tokens so the plot stays in sync with its card.
+  const style = getComputedStyle(element);
+  const token = (name: string) => style.getPropertyValue(name).trim();
+  const muted = token("--muted-foreground");
+  const border = token("--border");
+  const gold = token("--gold");
   const option: EChartsCoreOption = {
     animation: false,
     grid: { left: 12, right: 18, top: 24, bottom: 12, containLabel: true },
@@ -36,9 +37,9 @@ export function drawChart(
       trigger: "axis",
       renderMode: "richText",
       confine: true,
-      backgroundColor: dark ? "#171610" : "#fffdf8",
+      backgroundColor: token("--card"),
       borderColor: border,
-      textStyle: { color: dark ? "#f1ece2" : "#28241c" },
+      textStyle: { color: token("--foreground") },
       axisPointer: { lineStyle: { color: gold, type: "dashed" } },
       valueFormatter: (value: unknown) => `${priceText(Number(value))} 元/克`,
     },
@@ -57,8 +58,8 @@ export function drawChart(
       splitNumber: 5,
       axisPointer: {
         label: {
-          backgroundColor: dark ? "#d4b77e" : "#79581f",
-          color: dark ? "#171610" : "#fffdf8",
+          backgroundColor: token("--primary"),
+          color: token("--primary-foreground"),
           formatter: (params: { value: unknown }) =>
             fullDate.format(Number(params.value)),
         },
