@@ -44,7 +44,7 @@
 
 ## 超时、重试与失败
 
-每次 HTTP 请求（含读取 body）独立 15 秒超时，最多重试 2 次，退避 250/500ms；429/5xx 可重试并参考 Retry-After（等待上限 5 秒），网络/超时可重试，普通 4xx、解码/解析/价格错误不重试。禁止自动重定向，防止上报凭据被转发。源请求并发，单项与单源失败隔离。
+每次 HTTP 请求（含读取 body）默认独立 15 秒超时，周生生通过单请求配置放宽到 30 秒，不影响其它源和上报请求。最多尝试 3 次（首次 + 2 次重试），指数退避 1/2 秒，每次重建超时计时器与 AbortController；429/5xx 可重试并参考 Retry-After（等待上限 5 秒），网络/超时可重试，普通 4xx、解码/解析/价格错误不重试。禁止自动重定向，防止上报凭据被转发。源请求并发，单项与单源失败隔离。重试耗尽只输出 failure，不生成空价、零价或占位记录；CLI 只上传成功 records，因此已存价格保留。同日同项按 `(date, item_key)` upsert，且较旧 `fetched_at` 不覆盖较新记录。
 
 错误分类：`timeout/network/http/encoding/structure/price/date/stale/currency/challenge`；上报另有 `config/upload`。摘要包含源、item、分类、说明及 UTC 抓取时刻，不打印原始异常、响应正文、Authorization 或环境变量值。
 

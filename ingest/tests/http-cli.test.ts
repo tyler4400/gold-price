@@ -18,12 +18,61 @@ test('HTTP 网络/429/5xx 有限重试，401/403/411 不重试', async () => {
     const request = createRequester({ fetch: async () => { calls++; return new Response('', { status, headers: { 'Retry-After': '1' } }); }, sleep: async ms => { sleeps.push(ms); } });
     await assert.rejects(request('https://example.com'), isCode('http'));
     assert.equal(calls, status === 429 || status >= 500 ? 3 : 1);
-    assert.ok(sleeps.every(ms => ms === 1000));
+    assert.deepEqual(sleeps, status === 429 || status >= 500 ? [1000, 2000] : []);
   }
   let calls = 0;
   const request = createRequester({ fetch: async () => { if (++calls < 3) throw new Error('network'); return new Response('ok'); }, sleep: async () => {} });
   assert.equal(await request('https://example.com'), 'ok');
   assert.equal(calls, 3);
+});
+test('网络故障最多尝试三次，指数退避，成功即停止', async () => {
+  for (const succeeds of [true, false]) {
+    let calls = 0;
+    const sleeps: number[] = [];
+    const request = createRequester({ fetch: async () => {
+      if (++calls < 3 || !succeeds) throw new Error('connection reset');
+      return new Response('ok');
+    }, sleep: async ms => { sleeps.push(ms); } });
+    if (succeeds) assert.equal(await request('https://example.com'), 'ok');
+    else await assert.rejects(request('https://example.com'), isCode('network'));
+    assert.equal(calls, 3);
+    assert.deepEqual(sleeps, [1000, 2000]);
+  }
+});
+test('请求与 body 超时均有限重试，每次使用新 signal，恢复后立即返回', async () => {
+  for (const bodyTimeout of [false, true]) for (const succeeds of [true, false]) {
+    const signals: AbortSignal[] = [];
+    const sleeps: number[] = [];
+    const request = createRequester({ timeoutMs: 10, fetch: async (_url, init) => {
+      assert.ok(init?.signal);
+      assert.equal(init.signal.aborted, false);
+      signals.push(init.signal);
+      if (succeeds && signals.length === 2) return new Response('recovered');
+      const wait = new Promise<never>((_resolve, reject) => init.signal!.addEventListener('abort', () => reject(new Error('timeout'))));
+      if (!bodyTimeout) return wait;
+      return { ok: true, arrayBuffer: () => wait } as unknown as Response;
+    }, sleep: async ms => { sleeps.push(ms); } });
+    if (succeeds) assert.equal(await request('https://example.com'), 'recovered');
+    else await assert.rejects(request('https://example.com'), isCode('timeout'));
+    assert.equal(signals.length, succeeds ? 2 : 3);
+    assert.equal(new Set(signals).size, signals.length);
+    assert.deepEqual(sleeps, succeeds ? [1000] : [1000, 2000]);
+  }
+});
+test('单请求可放宽到 30 秒且不改变后续默认超时', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  let signal: AbortSignal | null | undefined;
+  const request = createRequester({ retries: 0, fetch: async (_url, init) => {
+    signal = init?.signal;
+    return new Promise<never>((_resolve, reject) => signal?.addEventListener('abort', () => reject(new Error('timeout'))));
+  } });
+  for (const timeoutMs of [30_000, undefined]) {
+    const rejected = assert.rejects(request('https://example.com', { timeoutMs }), isCode('timeout'));
+    t.mock.timers.tick((timeoutMs ?? 15_000) - 1);
+    assert.equal(signal?.aborted, false);
+    t.mock.timers.tick(1);
+    await rejected;
+  }
 });
 test('超时覆盖请求和读取响应；错误消息不泄漏原始错误', async () => {
   for (const bodyTimeout of [false, true]) {

@@ -94,11 +94,15 @@ curl --fail-with-body 'https://gold-price.tyler4400g.workers.dev/api/latest'
 
 | Workflow | 触发条件 | 权限与行为 |
 | --- | --- | --- |
-| Scrape | 每日 `30 1 * * *`（01:30 UTC / 北京时间 09:30）、`0 8 * * *`（08:00 UTC / 北京时间 16:00）；`workflow_dispatch` | `contents: read`；15 分钟超时；运行 `pnpm ingest -- --upload` |
+| Scrape | 每日 UTC 01:30 / 02:15 / 03:15、08:15 / 08:45 / 09:30（北京时间 09:30 / 10:15 / 11:15、16:15 / 16:45 / 17:30）；`workflow_dispatch` | `contents: read`；15 分钟超时；运行 `pnpm ingest -- --upload` |
 | CI | 所有 `pull_request`；向 `main` 的 `push` | `contents: read`；依次执行 lint、typecheck、test、build，任一步失败即红；无需 secrets、Cloudflare 登录或上报 |
 | Keepalive | 每月 1 日 `17 3 1 * *`（03:17 UTC / 北京时间 11:17）；`workflow_dispatch` | 仅 `actions: write`；5 分钟超时；列出本仓库所有 workflows，重新启用 `disabled_inactivity` 项 |
 
 Scrape 与 CI 使用 Ubuntu runner、pnpm 10.32.1、Node.js 24 和 `pnpm install --frozen-lockfile`。Scrape/Keepalive 都没有 `push` 或 `pull_request` 触发。schedule 仅在默认分支生效，并可能延迟或因高负载丢失，不能承诺准点刷新；详见 [GitHub schedule 说明](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule)。
+
+每组时段有三次独立抓取机会（cron 分别为 `30 1`、`15 2`、`15 3`、`15 8`、`45 8`、`30 9`，其余字段均为 `*`），均避开整点高峰；原 08:00 调整为 08:15。备用时段始终运行，前次成功也会刷新，不依赖前次 workflow 是否触发。每天由 2 次增为 6 次；本公开仓库使用标准 `ubuntu-latest` runner，额外 Actions 运行分钟仍[免费](https://docs.github.com/en/actions/concepts/billing-and-usage)。
+
+重复上报是幂等的：D1 的 `PRIMARY KEY (date, item_key)` 和 Worker 的 `ON CONFLICT ... DO UPDATE` 保证同日同项只存一行；仅接受 `fetched_at` 不早于现有记录的价格，延迟补跑不会用旧抓取回滚新抓取。周生生每次请求超时为 30 秒，网络/超时最多尝试 3 次、退避 1/2 秒；重试耗尽或解析失败只记录 failure，不上传失败项，因此不会抹去已有价格。
 
 所有分支的定时与手动 scrape 共用 `gold-price-scrape` concurrency group，`cancel-in-progress: false`，不会因后到任务而取消正在上报的任务。后到任务进入等待；按 GitHub 默认队列语义，同组最多一个运行、一个等待，更新的等待任务可能替换旧的等待任务，并非无限 FIFO 队列。详见 [GitHub concurrency 说明](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency)。
 
