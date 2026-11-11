@@ -24,5 +24,6 @@ export function parseChowSangSang(html: string, now: Date): Result {
   return result;
 }
 export async function fetchChowSangSang(request: RequestText, now: () => Date): Promise<Result> {
-  return parseChowSangSang(await request(CSS_SOURCE_URL), now());
+  // This source can respond slowly; each attempt includes both headers and body.
+  return parseChowSangSang(await request(CSS_SOURCE_URL, { timeoutMs: 30_000 }), now());
 }

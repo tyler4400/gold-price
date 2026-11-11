@@ -169,7 +169,7 @@ pnpm ingest -- --dry-run
 
 仅显式 `pnpm ingest -- --upload` 启用上报客户端。需由运行环境提供 `INGEST_TOKEN` 与 `WORKER_BASE_URL`（例如 `https://YOUR_WORKER_HOST`，不能带凭据或查询参数）；缺配置立即失败。密钥只进入 Authorization header，不进入 URL、日志或文件。本地开发额外允许 `http://127.0.0.1` 与 `http://localhost`（可带端口）；其它地址必须是 HTTPS origin。上报失败，或两关键项都失败，即使其它项上传成功也退出非 0。
 
-每请求 15 秒超时、最多 2 次重试；细节、来源选择和国际报价时效阈值见 [adapter 说明](ingest/adapters/README.md)，样本来源见 [fixtures](ingest/fixtures/README.md)。
+每请求默认 15 秒超时，周生生放宽到 30 秒（均含响应读取）；最多尝试 3 次（首次 + 2 次重试），指数退避 1/2 秒；细节、来源选择和国际报价时效阈值见 [adapter 说明](ingest/adapters/README.md)，样本来源见 [fixtures](ingest/fixtures/README.md)。
 
 ## 目录
 
@@ -187,7 +187,7 @@ pnpm ingest -- --dry-run
 
 完整说明见 [部署文档](docs/deploy.md)。生产站通过 Cloudflare Workers Builds 监听 `main` 的 push，自动执行 `pnpm run build` 与 `npx wrangler deploy`，不经过 GitHub Actions 部署。线上地址是 `https://gold-price.tyler4400g.workers.dev`。`INGEST_TOKEN` 与 `INGEST_URL` 分别写在 Worker secret 和仓库 Actions secrets 中，不要写入仓库。
 
-Scrape 每日 01:30 / 08:00 UTC（北京时间 09:30 / 16:00）运行，也可手动补跑；不在 push/PR 时触发，合并本身不会抓取。GitHub Secret `INGEST_URL` 映射为 CLI 的 `WORKER_BASE_URL`，`INGEST_TOKEN` 映射为同名环境变量；缺配置会明确失败并给出中文提示。CI 在 PR 和 main push 上运行 lint、typecheck、test、build，无需密钥。Keepalive 每月通过 API 恢复因不活跃停用的 workflow，不创建提交；若自身也被停用，仍需维护者启用并补跑，详见部署文档。
+Scrape 每日两组时段运行：UTC 01:30 / 02:15 / 03:15 和 08:15 / 08:45 / 09:30（北京时间 09:30 / 10:15 / 11:15 和 16:15 / 16:45 / 17:30），每组提供三次机会并避开整点，也可手动补跑。同日同项按 `(date, item_key)` upsert，旧抓取不会覆盖新抓取，失败项不写入；公开仓库使用标准 `ubuntu-latest` runner，新增运行分钟仍[免费](https://docs.github.com/en/actions/concepts/billing-and-usage)。不在 push/PR 时触发，合并本身不会抓取。GitHub Secret `INGEST_URL` 映射为 CLI 的 `WORKER_BASE_URL`，`INGEST_TOKEN` 映射为同名环境变量；缺配置会明确失败并给出中文提示。CI 在 PR 和 main push 上运行 lint、typecheck、test、build，无需密钥。Keepalive 每月通过 API 恢复因不活跃停用的 workflow，不创建提交；若自身也被停用，仍需维护者启用并补跑，详见部署文档。
 
 ## 文档与阶段
 

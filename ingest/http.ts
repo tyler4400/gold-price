@@ -2,7 +2,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { IngestError } from './core.ts';
 
 export type Encoding = 'utf-8' | 'gb18030' | 'gbk';
-export interface RequestOptions { method?: 'GET' | 'POST'; headers?: Record<string, string>; body?: string; encoding?: Encoding }
+export interface RequestOptions { method?: 'GET' | 'POST'; headers?: Record<string, string>; body?: string; encoding?: Encoding; timeoutMs?: number }
 export type RequestText = (url: string, options?: RequestOptions) => Promise<string>;
 export function decode(bytes: ArrayBuffer | Uint8Array, encoding: Encoding): string {
   try { return new TextDecoder(encoding, { fatal: true }).decode(bytes); }
@@ -13,10 +13,10 @@ export function createRequester(options: {
 } = {}): RequestText {
   const fetcher = options.fetch ?? globalThis.fetch;
   return async (url, request = {}) => {
-    const retries = options.retries ?? 2;
+    const retries = options.retries ?? 2; // Three total attempts, including the initial request.
     for (let attempt = 0; ; attempt++) {
       const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), options.timeoutMs ?? 15_000);
+      const timer = setTimeout(() => controller.abort(), request.timeoutMs ?? options.timeoutMs ?? 15_000);
       let retryAfter = 0;
       let failed: IngestError;
       try {
@@ -40,7 +40,7 @@ export function createRequester(options: {
           : error instanceof IngestError ? error : new IngestError('network', '网络请求失败', true);
       } finally { clearTimeout(timer); }
       if (!failed.retryable || attempt >= retries) throw failed;
-      await (options.sleep ?? delay)(Math.max(retryAfter, 250 * 2 ** attempt));
+      await (options.sleep ?? delay)(Math.max(retryAfter, 1_000 * 2 ** attempt));
     }
   };
 }
