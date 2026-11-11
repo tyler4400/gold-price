@@ -12,13 +12,14 @@ export function isItem(value: unknown): value is ItemKey {
 }
 
 const brandSource = 'https://www.huangjinjiage.cn/pinpaijinjia.html';
-const sources: Record<ItemKey, string> = {
+const sources: Record<ItemKey, string | readonly string[]> = {
   sge_au9999: 'https://finance.sina.com.cn/futures/quotes/AU9999.shtml',
   xau_cny_g: 'https://finance.sina.com.cn/futures/quotes/XAU.shtml',
   china_gold_base: 'https://www.chnau99999.com/page/goldPrice',
   china_gold_jewelry: 'https://www.chnau99999.com/page/goldPrice',
   lukfook_jewelry: 'https://www.lukfook.com/sc/page/goldprice',
-  chow_sang_sang_jewelry: 'https://cn.chowsangsang.com/gold-info',
+  // 官网优先；官网失败时 ingest 用聚合站兜底，source_url 指向实际来源。
+  chow_sang_sang_jewelry: ['https://cn.chowsangsang.com/gold-info', brandSource],
   chow_tai_fook_jewelry: brandSource,
   lao_feng_xiang_jewelry: brandSource,
   lao_miao_jewelry: brandSource,
@@ -48,7 +49,7 @@ export function validateRecords(body: unknown, now = new Date()): PriceRecord[] 
     const { date, item_key, price, unit, source_url, fetched_at } = value;
     if (!isItem(item_key) || unit !== 'CNY/g' || typeof price !== 'number' || !Number.isFinite(price) || price <= 0 ||
         !isDate(date) || date < '2000-01-01' ||
-        typeof source_url !== 'string' || source_url !== sources[item_key] ||
+        typeof source_url !== 'string' || !([] as string[]).concat(sources[item_key]).includes(source_url) ||
         typeof fetched_at !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/.test(fetched_at)) invalid();
     const timestamp = new Date(fetched_at);
     if (!Number.isFinite(timestamp.getTime()) || !isDate(fetched_at.slice(0, 10)) ||

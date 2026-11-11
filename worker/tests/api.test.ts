@@ -147,6 +147,13 @@ it.each(['timeout', 'network', 'challenge', 'price'] as const)('a failed brand (
   expect(stored.filter(r => r.item_key === brand.item_key)).toEqual(existing);
 });
 
+it('accepts the Chow Sang Sang aggregator fallback source, but not for other official-source items', async () => {
+  const fallback = sample({ item_key: 'chow_sang_sang_jewelry', source_url: 'https://www.huangjinjiage.cn/pinpaijinjia.html', price: 1212 });
+  expect(await (await post([fallback])).json()).toEqual({ accepted: 1, updated: 0, ignored: 0 });
+  expect(await rows()).toEqual([fallback]);
+  await expectError(await post([sample({ item_key: 'lukfook_jewelry', source_url: 'https://www.huangjinjiage.cn/pinpaijinjia.html' })]), 400);
+});
+
 it('concurrent upserts keep the newest timestamp with consistent counts', async () => {
   const responses = await Promise.all([
     post([sample({ price: 950, fetched_at: '2026-01-02T10:00:00Z' })]), post([sample()]),
