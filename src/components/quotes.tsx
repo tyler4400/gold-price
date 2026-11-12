@@ -151,20 +151,19 @@ function QuoteTable({
   quotes,
   loading,
   failed,
-  all = false,
-}: QuoteTableProps & { all?: boolean }) {
+}: QuoteTableProps) {
   const byKey = new Map(quotes.map((item) => [item.item_key, item]));
   return (
     <>
       <table className="brand-table" aria-busy={loading}>
         <caption className="sr-only">
-          {all ? "全部品种最新行情" : "品牌足金饰品报价"}，较上次统计涨跌额单位为元/克；日期不连续时单独标注对比日。
+          全部品种最新行情，较上次统计涨跌额单位为元/克；日期不连续时单独标注对比日。
         </caption>
         <thead>
           <tr>
-            <th scope="col">{all ? "品种" : "品牌"}</th>
+            <th scope="col">品种</th>
             <th scope="col">
-              {all ? "价格" : "足金饰品价"}
+              价格
               <span>（元/克）</span>
             </th>
             <th scope="col">较上次统计涨跌</th>
@@ -172,7 +171,7 @@ function QuoteTable({
           </tr>
         </thead>
         <tbody>
-          {(all ? items : items.slice(3)).map(({ key, name }) => {
+          {items.map(({ key, name }) => {
             const item = byKey.get(key);
             return (
               <tr key={key}>
@@ -214,22 +213,8 @@ export function MarketSummary(props: QuoteTableProps) {
         </div>
         <span className="eyebrow">{items.length} 个品种</span>
       </div>
-      <QuoteTable {...props} all />
+      <QuoteTable {...props} />
     </section>
   );
 }
 
-export function BrandTable(props: QuoteTableProps) {
-  return (
-    <Card className="brand-card">
-      <div className="section-heading">
-        <div>
-          <h2>品牌金店金价</h2>
-          <p>足金饰品挂牌价 · 品牌名称可查看报价来源</p>
-        </div>
-        <span className="eyebrow">8 个品牌</span>
-      </div>
-      <QuoteTable {...props} />
-    </Card>
-  );
-}

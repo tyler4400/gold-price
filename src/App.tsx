@@ -1,7 +1,7 @@
 import { PriceAlertButton } from "@/components/price-alert-button";
 import { GithubLink } from "@/components/github-link";
 import { ThemeToggleButton } from "@/components/theme/theme-toggle-button";
-import { Quotes, BrandTable } from "@/components/quotes";
+import { Quotes } from "@/components/quotes";
 import { HistoryChart } from "@/components/history-chart";
 import { SourcesFooter } from "@/components/sources-footer";
 import { Loading, RequestError } from "@/components/market-status";
@@ -58,11 +58,6 @@ export function App() {
             failed={Boolean(latest.error)}
           />
           <HistoryChart
-            quotes={quotes}
-            loading={latest.loading}
-            failed={Boolean(latest.error)}
-          />
-          <BrandTable
             quotes={quotes}
             loading={latest.loading}
             failed={Boolean(latest.error)}
