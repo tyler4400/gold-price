@@ -1,7 +1,7 @@
 import { PriceAlertButton } from "@/components/price-alert-button";
 import { GithubLink } from "@/components/github-link";
 import { ThemeToggleButton } from "@/components/theme/theme-toggle-button";
-import { Quotes, BrandTable } from "@/components/quotes";
+import { Quotes } from "@/components/quotes";
 import { HistoryChart } from "@/components/history-chart";
 import { SourcesFooter } from "@/components/sources-footer";
 import { Loading, RequestError } from "@/components/market-status";
@@ -19,10 +19,9 @@ export function App() {
       <aside className="side-slot" data-slot="left-aside" aria-hidden="true" />
       <div className="content-shell">
         <header className="site-header">
-          <a href="/" aria-label="金价首页" className="site-logo">
+          <a href="/" aria-label="每日金价首页" className="site-logo">
             <img src="/logo.svg" width="32" height="32" alt="" />
-            <span className="site-wordmark">金价</span>
-            <span className="site-wordmark-en">gold-price</span>
+            <span className="site-wordmark">每日金价</span>
           </a>
           <nav aria-label="外观与项目" className="flex items-center gap-1">
             <ThemeToggleButton />
@@ -58,8 +57,7 @@ export function App() {
             loading={latest.loading}
             failed={Boolean(latest.error)}
           />
-          <HistoryChart />
-          <BrandTable
+          <HistoryChart
             quotes={quotes}
             loading={latest.loading}
             failed={Boolean(latest.error)}

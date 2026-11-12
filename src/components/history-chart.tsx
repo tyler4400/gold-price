@@ -3,19 +3,26 @@ import { ChartNoAxesCombined } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Loading, RequestError } from "@/components/market-status";
+import { MarketSummary, type QuoteTableProps } from "@/components/quotes";
+import type { LegendSelection } from "@/lib/chart";
 import { useMarket } from "@/hooks/use-market";
 import { useTheme } from "@/hooks/use-theme";
 import {
   items,
-  parseHistory,
+  parseAllHistory,
   priceText,
   ranges,
-  type History,
-  type ItemKey,
+  type AllHistory,
   type Range,
 } from "@/lib/market";
 
-function Plot({ history }: { history: History }) {
+function Plot({
+  history,
+  selected,
+}: {
+  history: AllHistory;
+  selected: LegendSelection;
+}) {
   const container = useRef<HTMLDivElement>(null);
   const { resolvedTheme } = useTheme();
   const [error, setError] = useState(false);
@@ -33,6 +40,7 @@ function Plot({ history }: { history: History }) {
           container.current,
           history,
           resolvedTheme === "dark",
+          selected,
         );
         const observer = new ResizeObserver(() => chart.resize());
         observer.observe(container.current);
@@ -52,7 +60,7 @@ function Plot({ history }: { history: History }) {
       disposed = true;
       cleanup?.();
     };
-  }, [history, resolvedTheme, attempt]);
+  }, [history, resolvedTheme, attempt, selected]);
   return (
     <>
       {loading && <Loading>正在绘制走势图…</Loading>}
@@ -66,43 +74,36 @@ function Plot({ history }: { history: History }) {
         className="history-plot"
         ref={container}
         role="img"
-        aria-label={`历史金价折线图，共 ${history.points.length} 个有效数据点；详细日期和价格见下方数据明细。`}
+        aria-label="全部品种历史金价折线图，点击图例可显示或隐藏品种；详细日期和价格见下方数据明细。"
       />
     </>
   );
 }
 
-export function HistoryChart() {
-  const [item, setItem] = useState<ItemKey>("sge_au9999");
+export function HistoryChart(props: QuoteTableProps) {
+  const selected = useRef<LegendSelection>({});
   const [range, setRange] = useState<Range>("30d");
   const result = useMarket(
-    `/api/history?item=${item}&range=${range}`,
-    parseHistory,
+    `/api/history?range=${range}`,
+    parseAllHistory,
   );
   const history = result.data;
-  const mismatched =
-    history && (history.item_key !== item || history.range !== range);
+  const mismatched = history && history.range !== range;
+  const points = history?.series
+    .flatMap((series) =>
+      series.points.map((point) => ({ ...point, item_key: series.item_key })),
+    )
+    .sort((a, b) =>
+      a.date.localeCompare(b.date) || a.item_key.localeCompare(b.item_key),
+    ) ?? [];
+  const names = new Map(items.map((item) => [item.key, item.name]));
   return (
     <Card className="history-card">
       <div className="section-heading">
         <div>
           <h2>历史走势</h2>
-          <p>每日记录，留意金价的长期变化</p>
+          <p>全部品种默认显示 · 点击图例可隐藏或显示，再次点击恢复</p>
         </div>
-        <label className="history-select-label">
-          <span className="sr-only">选择历史报价品种</span>
-          <select
-            value={item}
-            onChange={(event) => setItem(event.target.value as ItemKey)}
-          >
-            {items.map((value) => (
-              <option key={value.key} value={value.key}>
-                {value.name}
-                {value.key.endsWith("_jewelry") ? "·足金饰品" : ""}
-              </option>
-            ))}
-          </select>
-        </label>
       </div>
       <div className="chart-toolbar">
         <span className="text-xs text-muted-foreground">单位：元/克</span>
@@ -125,7 +126,7 @@ export function HistoryChart() {
         {result.loading && <Loading>正在加载历史报价…</Loading>}
         {(result.error || mismatched) && (
           <RequestError
-            message={result.error ?? "历史响应与所选品种或区间不符，请重试。"}
+            message={result.error ?? "历史响应与所选区间不符，请重试。"}
             retry={result.retry}
           />
         )}
@@ -134,13 +135,13 @@ export function HistoryChart() {
             <p className="history-summary">
               查询区间：{history.from} — {history.to} · 北京时间
             </p>
-            {history.points.length ? (
+            {points.length ? (
               <>
-                <Plot history={history} />
+                <Plot history={history} selected={selected.current} />
                 <p className="history-summary">
-                  本区间共 {history.points.length} 个有效数据点 ·
-                  本区间最早数据日期：{history.points[0]?.date}
-                  {history.points.length === 1
+                  本区间共 {points.length} 个有效数据点 ·
+                  本区间最早数据日期：{points[0]?.date}
+                  {points.length === 1
                     ? " · 目前仅有一个数据点，尚不足以形成走势。"
                     : ""}
                 </p>
@@ -150,13 +151,15 @@ export function HistoryChart() {
                     <table>
                       <thead>
                         <tr>
+                          <th scope="col">品种</th>
                           <th scope="col">数据日期</th>
                           <th scope="col">价格（元/克）</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {history.points.map((point) => (
-                          <tr key={point.date}>
+                        {points.map((point) => (
+                          <tr key={`${point.item_key}/${point.date}`}>
+                            <th scope="row">{names.get(point.item_key)}</th>
                             <td>{point.date}</td>
                             <td>{priceText(point.price)}</td>
                           </tr>
@@ -182,6 +185,7 @@ export function HistoryChart() {
       <p className="chart-note">
         只绘制已采集日的报价，缺失日期不补点、不补零；连线仅帮助观察变化，不代表连续实测行情。
       </p>
+      <MarketSummary {...props} />
     </Card>
   );
 }

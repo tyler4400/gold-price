@@ -40,7 +40,7 @@ export function SourcesFooter() {
       <div className="footer-bottom">
         <span className="footer-brand">
           <img src="/logo.svg" width="20" height="20" alt="" />
-          gold-price · 公开金价，每日记录
+          每日金价 · 公开金价，每日记录
         </span>
         <span>代码采用 AGPL-3.0</span>
       </div>

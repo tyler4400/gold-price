@@ -4,7 +4,7 @@ import { Miniflare, convertV4MiniflareOptions } from 'miniflare';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { historyBounds } from '../index.ts';
 import type { PriceRecord } from '../../ingest/core.ts';
-import { IngestError } from '../../ingest/core.ts';
+import { IngestError, ITEM_KEYS } from '../../ingest/core.ts';
 import { main } from '../../ingest/cli.ts';
 import { collect } from '../../ingest/pipeline.ts';
 import { CSS_SOURCE_URL } from '../../ingest/adapters/chow-sang-sang.ts';
@@ -236,6 +236,31 @@ function shift(date: string, days: number): string {
   return new Date(Date.parse(`${date}T00:00:00Z`) + days * 86400000).toISOString().slice(0, 10);
 }
 describe('history', () => {
+  it.each([7, 30, 90, 365])('batch %id returns all items, preserving sparse points and empty series', async days => {
+    const { from, to } = historyBounds(`${days}d`);
+    const included = [sample({ date: from }), sample({ date: to, price: 820 })];
+    const other = sample({ date: shift(to, -2), item_key: 'china_gold_base', price: 810 });
+    await seed([included[1]!, other, included[0]!, sample({ date: shift(from, -1) }), sample({ date: shift(to, 1) })]);
+    const point = ({ date, price, source_url, fetched_at }: PriceRecord) => ({ date, price, source_url, fetched_at });
+    for (const query of [`?range=${days}d`, `?item=all&range=${days}d`]) {
+      const response = await mf.dispatchFetch(`${origin}/api/history${query}`);
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ unit: 'CNY/g', range: `${days}d`, from, to,
+        series: ITEM_KEYS.map(item_key => ({ item_key,
+          points: item_key === 'sge_au9999' ? included.map(point) : item_key === other.item_key ? [point(other)] : [],
+        })),
+      });
+    }
+  });
+  it('batch defaults to 30d with every known item present even in an empty database', async () => {
+    for (const query of ['', '?item=all']) {
+      const response = await mf.dispatchFetch(`${origin}/api/history${query}`);
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ unit: 'CNY/g', range: '30d', ...historyBounds('30d'),
+        series: ITEM_KEYS.map(item_key => ({ item_key, points: [] })),
+      });
+    }
+  });
   it.each([7, 30, 90, 365])('%id uses inclusive calendar boundaries, ordered sparse points and independent items', async days => {
     const to = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai' }).format(new Date());
     const from = shift(to, -(days - 1));
@@ -251,7 +276,7 @@ describe('history', () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({ item_key: 'caibai_jewelry', unit: 'CNY/g', range: '30d', points: [] });
   });
-  it.each(['', '?range=7d', '?item=invalid', '?item=sge_au9999&range=1d', '?item=sge_au9999&range=', '?item=sge_au9999&range=30D'])('rejects invalid query %s', async query => {
+  it.each(['?item=', '?item=ALL', '?range=1d', '?item=all&range=', '?item=invalid', '?item=sge_au9999&range=1d', '?item=sge_au9999&range=', '?item=sge_au9999&range=30D'])('rejects invalid query %s', async query => {
     await expectError(await mf.dispatchFetch(`${origin}/api/history${query}`), 400);
   });
   it('Shanghai midnight, leap day and year rollover have exact calendar boundaries', () => {

@@ -1,6 +1,6 @@
 import { timingSafeEqual } from 'node:crypto';
 import type { D1Database } from '@cloudflare/workers-types';
-import { shanghaiDate } from '../ingest/core.ts';
+import { ITEM_KEYS, shanghaiDate } from '../ingest/core.ts';
 import type { PriceRecord } from '../ingest/core.ts';
 import { ApiError, isItem, readJson, validateRecords } from './validation.ts';
 
@@ -78,10 +78,21 @@ export function historyBounds(range: string, now = new Date()): { from: string; 
 async function history(url: URL, db: D1Database): Promise<Response> {
   const item = url.searchParams.get('item');
   const range = url.searchParams.get('range') ?? '30d';
-  if (!isItem(item) || !['7d', '30d', '90d', '365d'].includes(range)) {
-    throw new ApiError(400, 'invalid_query', 'item 必须为有效数据项，range 必须为 7d、30d、90d 或 365d');
+  const all = item === null || item === 'all';
+  if ((!all && !isItem(item)) || !['7d', '30d', '90d', '365d'].includes(range)) {
+    throw new ApiError(400, 'invalid_query', 'item 必须为有效数据项、all 或省略，range 必须为 7d、30d、90d 或 365d');
   }
   const { from, to } = historyBounds(range);
+  if (all) {
+    const { results } = await db.prepare(`SELECT item_key, date, price, source_url, fetched_at FROM daily_prices
+      WHERE date >= ? AND date <= ? ORDER BY item_key, date ASC`).bind(from, to)
+      .all<Pick<PriceRecord, 'item_key' | 'date' | 'price' | 'source_url' | 'fetched_at'>>();
+    return json({ unit: 'CNY/g', range, from, to, series: ITEM_KEYS.map(item_key => ({
+      item_key,
+      points: results.filter(row => row.item_key === item_key)
+        .map(({ date, price, source_url, fetched_at }) => ({ date, price, source_url, fetched_at })),
+    })) });
+  }
   const { results: points } = await db.prepare(`SELECT date, price, source_url, fetched_at FROM daily_prices
     WHERE item_key = ? AND date >= ? AND date <= ? ORDER BY date ASC`).bind(item, from, to).all();
   return json({ item_key: item, unit: 'CNY/g', range, from, to, points });

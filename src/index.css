@@ -212,14 +212,6 @@ summary {
   font-size: 19px;
   letter-spacing: 0.12em;
 }
-.site-wordmark-en {
-  padding-left: 10px;
-  border-left: 1px solid var(--border);
-  font-size: 11px;
-  font-weight: 500;
-  letter-spacing: 0.08em;
-  color: var(--muted-foreground);
-}
 .site-logo:hover .site-wordmark {
   color: var(--gold);
 }
@@ -398,18 +390,23 @@ main {
 .main-price + p {
   margin-top: 14px;
 }
-.main-quote > p:last-of-type {
-  margin-bottom: 24px;
-}
-.main-quote-bottom {
+.quote-card-top {
   display: flex;
   justify-content: space-between;
-  align-items: flex-end;
-  flex-wrap: wrap;
-  gap: 20px;
-  margin-top: auto;
-  padding-top: 24px;
-  border-top: 1px solid var(--quote-rule);
+  align-items: flex-start;
+  gap: 12px;
+}
+.quote-card-top > :first-child {
+  flex-shrink: 0;
+}
+.quote-card-date {
+  text-align: right;
+}
+.quote-card-date .quote-date {
+  justify-content: flex-end;
+}
+.main-quote .comparison-date {
+  color: var(--quote-muted);
 }
 .secondary-quote {
   container-type: inline-size;
@@ -426,7 +423,6 @@ main {
 .secondary-price .price-unit {
   color: var(--muted-foreground);
 }
-.quote-badge,
 .stale-label {
   display: inline-flex;
   align-items: center;
@@ -487,8 +483,7 @@ main {
   z-index: 10;
   font-size: 14px;
 }
-.history-card,
-.brand-card {
+.history-card {
   margin-top: 24px;
   overflow: hidden;
 }
@@ -509,23 +504,6 @@ main {
   margin-top: 4px;
   font-size: 12px;
   color: var(--muted-foreground);
-}
-.history-select-label {
-  min-width: 0;
-}
-.history-select-label select {
-  width: 100%;
-  max-width: 260px;
-  padding: 7px 24px 7px 10px;
-  border: 1px solid var(--control-border);
-  border-radius: 6px;
-  background: var(--card);
-  color: var(--gold);
-  font-size: 12px;
-}
-.history-select-label select:hover {
-  border-color: var(--gold);
-  background: var(--gold-wash);
 }
 .history-details summary:hover {
   color: var(--gold);
@@ -557,6 +535,9 @@ main {
   width: 100%;
   height: 265px;
 }
+.market-summary {
+  border-top: 1px solid var(--border);
+}
 .history-summary {
   font-size: 11px;
   color: var(--muted-foreground);
@@ -582,10 +563,11 @@ main {
 }
 .history-data-scroll {
   max-height: 240px;
-  overflow-y: auto;
+  overflow: auto;
   margin-top: 10px;
 }
 .history-details table {
+  min-width: 400px;
   width: 100%;
   text-align: left;
   border-collapse: collapse;
@@ -796,15 +778,6 @@ main {
   .section-heading {
     padding: 18px 16px;
     flex-wrap: wrap;
-  }
-  .history-select-label,
-  .history-select-label select {
-    width: 100%;
-    max-width: none;
-  }
-  .history-select-label select:hover {
-    border-color: var(--gold);
-    background: var(--gold-wash);
   }
   .history-details summary:hover {
     color: var(--gold);
