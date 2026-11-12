@@ -3,6 +3,30 @@ main = "worker/index.ts"
 compatibility_date = "2026-09-09"
 compatibility_flags = ["nodejs_compat"]
 
+# 保留 workers.dev 与分支预览 URL；自定义域名写进配置，避免后续部署丢掉控制台绑定。
+workers_dev = true
+preview_urls = true
+
+[[routes]]
+pattern = "daily-gold.tyler4400.com"
+custom_domain = true
+
+# Workers Observability：日志与追踪全量采集（本站流量低）。
+# 仅 [observability] enabled 只开日志；追踪需单独打开 traces.enabled。
+# 说明见 https://developers.cloudflare.com/workers/observability/
+[observability]
+enabled = true
+head_sampling_rate = 1
+
+[observability.logs]
+enabled = true
+invocation_logs = true
+head_sampling_rate = 1
+
+[observability.traces]
+enabled = true
+head_sampling_rate = 1
+
 [assets]
 directory = "./dist"
 binding = "ASSETS"
@@ -44,3 +68,16 @@ directory = "./dist"
 binding = "ASSETS"
 not_found_handling = "single-page-application"
 run_worker_first = ["/healthz", "/api", "/api/*"]
+
+[previews.observability]
+enabled = true
+head_sampling_rate = 1
+
+[previews.observability.logs]
+enabled = true
+invocation_logs = true
+head_sampling_rate = 1
+
+[previews.observability.traces]
+enabled = true
+head_sampling_rate = 1
