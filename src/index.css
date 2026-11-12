@@ -390,19 +390,19 @@ main {
 .main-price + p {
   margin-top: 14px;
 }
-.main-quote-top {
+.quote-card-top {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
   gap: 12px;
 }
-.main-quote-top > div:first-child {
+.quote-card-top > :first-child {
   flex-shrink: 0;
 }
-.main-quote-date {
+.quote-card-date {
   text-align: right;
 }
-.main-quote-date .quote-date {
+.quote-card-date .quote-date {
   justify-content: flex-end;
 }
 .main-quote .comparison-date {
@@ -423,7 +423,6 @@ main {
 .secondary-price .price-unit {
   color: var(--muted-foreground);
 }
-.quote-badge,
 .stale-label {
   display: inline-flex;
   align-items: center;

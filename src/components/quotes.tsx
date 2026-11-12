@@ -84,13 +84,13 @@ export function Quotes({
       aria-busy={loading}
     >
       <Card className="main-quote">
-        <div className="main-quote-top">
+        <div className="quote-card-top">
           <div className="flex items-center gap-2">
             <span className="eyebrow">基础金价</span>
             <span className="gold-mark" aria-hidden="true" />
           </div>
           {main && (
-            <div className="main-quote-date text-xs text-muted-foreground">
+            <div className="quote-card-date text-xs text-muted-foreground">
               <p className="mb-1">数据日期</p>
               <QuoteDate item={main} />
             </div>
@@ -112,27 +112,22 @@ export function Quotes({
         const item = byKey.get(key);
         return (
           <Card className="secondary-quote" key={key}>
-            <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="quote-card-top">
               <h2 className="text-sm font-semibold">
                 {key === "xau_cny_g" ? "国际现货金" : "中国黄金·基础金价"}
               </h2>
-              <span className="quote-badge">
-                {key === "xau_cny_g" ? "参考" : "基础报价补充"}
-              </span>
+              {item ? (
+                <div className="quote-card-date text-xs text-muted-foreground">
+                  <p className="mb-1">数据日期</p>
+                  <QuoteDate item={item} />
+                </div>
+              ) : (
+                <p className="quote-card-date text-xs text-muted-foreground">{missing}</p>
+              )}
             </div>
             <p className="secondary-price">
               <span className="price-value">{item ? priceText(item.price) : "—"}</span>
               <span className="price-unit">元/克</span>
-            </p>
-            <p className="text-xs text-muted-foreground">
-              {item ? (
-                <>
-                  <span className="mr-2">数据日期</span>
-                  <QuoteDate item={item} />
-                </>
-              ) : (
-                missing
-              )}
             </p>
             <p className="mt-3 text-xs leading-5 text-muted-foreground">
               {key === "xau_cny_g"
