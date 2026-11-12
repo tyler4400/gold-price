@@ -2,7 +2,7 @@
 
 生产站由 [Cloudflare Workers Builds](https://developers.cloudflare.com/workers/ci-cd/builds/) 连接本仓库，在 push 到默认分支 `main` 时自动构建并部署。这条线和合成大模型（`tyler4400/merge-models`）相同：不经过 GitHub Actions 推代码，也不使用 Actions 部署 Worker。仓库里的 Actions 只负责 CI、定时抓取和保活。
 
-线上 Worker 名称为 `gold-price`，workers.dev 地址为 `https://gold-price.tyler4400g.workers.dev`。本文不再使用 `YOUR_WORKER_HOST`、`YOUR_D1_DATABASE_ID` 占位符。不要把 token 或 `INGEST_TOKEN` 写入仓库、issue、日志或 `.dev.vars`。
+线上 Worker 名称为 `gold-price`，生产域名是 [`https://daily-gold.tyler4400.com/`](https://daily-gold.tyler4400.com/)，已在 `wrangler.toml` 用 `[[routes]]`（`custom_domain = true`）声明。workers.dev 地址 `https://gold-price.tyler4400g.workers.dev` 仍指向同一 Worker，`workers_dev` 与 `preview_urls` 均保持开启。本文不再使用 `YOUR_WORKER_HOST`、`YOUR_D1_DATABASE_ID` 占位符。不要把 token 或 `INGEST_TOKEN` 写入仓库、issue、日志或 `.dev.vars`。
 
 ## 1. Workers Builds
 
@@ -21,7 +21,7 @@ Git 集成已连接到 `tyler4400/gold-price`，生产分支为 `main`。配置�
 
 合并到 `main` 会触发生产构建；其它分支的 push 只更新 Preview，不影响线上。不要新增 GitHub Actions 部署 workflow。构建使用的是已有账号级 Workers Builds token（与 one-ip 共用），不是仓库 secret。
 
-`wrangler.toml` 的 `[previews]` 把预览绑到独立 D1 `gold-price-preview`，避免分支预览写入生产库。预览构建跑 `npx wrangler preview`；缺少该块时预览会失败，但不影响 `main` 上的 `npx wrangler deploy`。
+`wrangler.toml` 的 `[[previews.d1_databases]]` 与生产共用 D1 `gold-price`（D1 绑定不会自动继承到 `[previews]`，必须显式声明，否则预览构建会失败）。预览构建跑 `npx wrangler preview`，不影响 `main` 上的 `npx wrangler deploy`。
 
 构建命令会执行 `pnpm typecheck && vite build`，产物在 `dist/`。Wrangler 按 `wrangler.toml` 的 `[assets]` 把静态资源和 Worker API 一起发布。本地校验可用：
 
@@ -50,7 +50,7 @@ pnpm exec wrangler d1 migrations apply DB --remote
 
 ## 3. Worker 与 GitHub secrets
 
-`INGEST_TOKEN` 同时存在于 Worker secret 和 GitHub 仓库的 Actions secret；两端必须相同。`INGEST_URL` 只在 GitHub 仓库 secret 中，值为 `https://gold-price.tyler4400g.workers.dev`（HTTPS origin，不带 `/api/ingest`、路径、查询参数、片段或凭据）。scrape job 把 `INGEST_URL` 映射为 `WORKER_BASE_URL`，把 `INGEST_TOKEN` 映射为同名环境变量。
+`INGEST_TOKEN` 同时存在于 Worker secret 和 GitHub 仓库的 Actions secret；两端必须相同。`INGEST_URL` 只在 GitHub 仓库 secret 中，值为任意指向该 Worker 的 HTTPS origin（不带 `/api/ingest`、路径、查询参数、片段或凭据），例如 `https://daily-gold.tyler4400.com` 或 `https://gold-price.tyler4400g.workers.dev`。scrape job 把 `INGEST_URL` 映射为 `WORKER_BASE_URL`，把 `INGEST_TOKEN` 映射为同名环境变量。
 
 轮换时在可信环境生成新的高强度随机值，同步更新 Worker secret 与 GitHub `INGEST_TOKEN`，再手动补跑 Scrape 验证。不要把值放在命令参数、文档、issue、日志、Git URL、前端代码或任何 `VITE_*` 变量中。不要把生产值写入 `.dev.vars`。不需要向 CI 提供 Cloudflare 凭据，也不需要名为 `WORKER_BASE_URL` 的仓库变量。
 
@@ -60,7 +60,7 @@ pnpm exec wrangler d1 migrations apply DB --remote
 pnpm exec wrangler secret put INGEST_TOKEN
 # 仅在交互提示中输入值
 printf '%s' "$INGEST_TOKEN" | gh secret set INGEST_TOKEN --repo tyler4400/gold-price
-printf '%s' 'https://gold-price.tyler4400g.workers.dev' | gh secret set INGEST_URL --repo tyler4400/gold-price
+printf '%s' 'https://daily-gold.tyler4400.com' | gh secret set INGEST_URL --repo tyler4400/gold-price
 ```
 
 `wrangler secret put` 会立即创建一个新版本并部署，不要在即将被构建覆盖的窗口里误改其它绑定。
@@ -68,8 +68,8 @@ printf '%s' 'https://gold-price.tyler4400g.workers.dev' | gh secret set INGEST_U
 ## 4. 验收
 
 ```bash
-curl --fail-with-body 'https://gold-price.tyler4400g.workers.dev/healthz'
-curl --fail-with-body 'https://gold-price.tyler4400g.workers.dev/api/latest'
+curl --fail-with-body 'https://daily-gold.tyler4400.com/healthz'
+curl --fail-with-body 'https://daily-gold.tyler4400.com/api/latest'
 ```
 
 健康检查应返回 `status: "ok"`；尚未抓取时 latest 的 `items` 为空属于正常情况。构建产物 `dist/`、`.wrangler/`、本地密钥文件和 `preview-api/` 均不提交到仓库。
@@ -86,9 +86,11 @@ curl --fail-with-body 'https://gold-price.tyler4400g.workers.dev/api/latest'
 
 上报失败时先核对 URL 格式与两端密钥一致性、Worker secret 是否存在及远端迁移是否完成；401 常为鉴权不匹配，503 需检查服务端配置或数据库。修复后重新 **Run workflow**。不要将完整敏感配置贴入 issue 或日志。
 
-## 5. 可选：绑定自定义域名
+## 5. 自定义域名与可观测性
 
-默认使用 workers.dev。若要绑定自定义域名，在 Cloudflare 控制台打开该 Worker 的 Settings → Domains & Routes → Add → Custom Domain，选择自己在 Cloudflare 管理的域名，等待 DNS 与证书生效。操作说明见 [Workers Custom Domains](https://developers.cloudflare.com/workers/configuration/routing/custom-domains/)。用自定义域名重新验证健康检查和查询接口，并把 GitHub 的 `INGEST_URL` 改成这个 HTTPS origin。
+生产自定义域名 `daily-gold.tyler4400.com` 已绑定，并写在 `wrangler.toml` 的 `[[routes]]` 中（`custom_domain = true`），后续 `wrangler deploy` 会保留该绑定。`workers_dev` 与 `preview_urls` 保持开启，workers.dev 与分支预览地址仍可用。说明见 [Workers Custom Domains](https://developers.cloudflare.com/workers/configuration/routing/custom-domains/)。
+
+Workers Observability 也写在 `wrangler.toml`：生产与分支预览都开启日志（含 invocation logs）和追踪，采样率为 1（全量）。仅设置 `[observability] enabled = true` 只开日志，追踪需要 `observability.traces.enabled = true`。配置在合并到 `main` 并由 Workers Builds 部署后生效。可在 Cloudflare 控制台该 Worker 的 Observability 页查看日志和追踪。说明见 [Workers Logs](https://developers.cloudflare.com/workers/observability/logs/workers-logs/) 与 [Traces](https://developers.cloudflare.com/workers/observability/traces/)。自 2026-12-01 起，持久化的 traces 会计入 [Cloudflare Observability 用量](https://developers.cloudflare.com/observability/pricing/)。
 
 ## 6. 调度、CI 与保活
 

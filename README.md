@@ -180,12 +180,12 @@ pnpm ingest -- --dry-run
 | `worker/`          | 静态资源、健康检查、查询与鉴权上报 API                  |
 | `ingest/` | 阶段② adapters、CLI、上报客户端、离线 fixtures 与单测 |
 | `migrations/`      | 三表的正式 D1 SQL 迁移           |
-| `wrangler.toml`    | 静态资源配置、生产 D1 绑定及本地 D1 绑定 |
+| `wrangler.toml`    | 静态资源配置、生产自定义域名、Workers Observability、生产 D1 及本地 D1 绑定 |
 | `docs/`            | 架构、产品说明和现有视觉稿              |
 
 ## 部署与自动化
 
-完整说明见 [部署文档](docs/deploy.md)。生产站通过 Cloudflare Workers Builds 监听 `main` 的 push，自动执行 `pnpm run build` 与 `npx wrangler deploy`，不经过 GitHub Actions 部署。线上地址是 `https://gold-price.tyler4400g.workers.dev`。`INGEST_TOKEN` 与 `INGEST_URL` 分别写在 Worker secret 和仓库 Actions secrets 中，不要写入仓库。
+完整说明见 [部署文档](docs/deploy.md)。生产站通过 Cloudflare Workers Builds 监听 `main` 的 push，自动执行 `pnpm run build` 与 `npx wrangler deploy`，不经过 GitHub Actions 部署。线上地址是 [`https://daily-gold.tyler4400.com/`](https://daily-gold.tyler4400.com/)，workers.dev 备用地址 `https://gold-price.tyler4400g.workers.dev` 仍指向同一 Worker。`INGEST_TOKEN` 与 `INGEST_URL` 分别写在 Worker secret 和仓库 Actions secrets 中，不要写入仓库。
 
 Scrape 每日两组时段运行：UTC 01:30 / 02:15 / 03:15 和 08:15 / 08:45 / 09:30（北京时间 09:30 / 10:15 / 11:15 和 16:15 / 16:45 / 17:30），每组提供三次机会并避开整点，也可手动补跑。同日同项按 `(date, item_key)` upsert，旧抓取不会覆盖新抓取，失败项不写入；公开仓库使用标准 `ubuntu-latest` runner，新增运行分钟仍[免费](https://docs.github.com/en/actions/concepts/billing-and-usage)。不在 push/PR 时触发，合并本身不会抓取。GitHub Secret `INGEST_URL` 映射为 CLI 的 `WORKER_BASE_URL`，`INGEST_TOKEN` 映射为同名环境变量；缺配置会明确失败并给出中文提示。CI 在 PR 和 main push 上运行 lint、typecheck、test、build，无需密钥。Keepalive 每月通过 API 恢复因不活跃停用的 workflow，不创建提交；若自身也被停用，仍需维护者启用并补跑，详见部署文档。
 
