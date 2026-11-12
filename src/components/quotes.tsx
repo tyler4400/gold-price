@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { Card } from "@/components/ui/card";
 import {
   comparison,
+  comparisonDate,
   fetchedTime,
   items,
   priceText,
@@ -38,6 +39,12 @@ export function Change({ item }: { item?: LatestItem }) {
       {value.text}
     </span>
   );
+}
+export function ComparisonDate({ item }: { item?: LatestItem }) {
+  const date = item && comparisonDate(item);
+  return date ? (
+    <span className="comparison-date">对比 {date} · 上一有效数据日</span>
+  ) : null;
 }
 export function QuoteDate({ item }: { item: LatestItem }) {
   const old = item.date < todayInShanghai();
@@ -77,9 +84,17 @@ export function Quotes({
       aria-busy={loading}
     >
       <Card className="main-quote">
-        <div className="flex items-center gap-2">
-          <span className="eyebrow">基础金价</span>
-          <span className="gold-mark" aria-hidden="true" />
+        <div className="main-quote-top">
+          <div className="flex items-center gap-2">
+            <span className="eyebrow">基础金价</span>
+            <span className="gold-mark" aria-hidden="true" />
+          </div>
+          {main && (
+            <div className="main-quote-date text-xs text-muted-foreground">
+              <p className="mb-1">数据日期</p>
+              <QuoteDate item={main} />
+            </div>
+          )}
         </div>
         <h2 className="mt-3 font-semibold">上金所基础金价 Au99.99</h2>
         <div className="main-price">
@@ -87,26 +102,11 @@ export function Quotes({
           <span className="price-unit">元/克</span>
         </div>
         <p className="flex flex-wrap items-center gap-2 text-sm">
-          <span className="text-muted-foreground">较昨日</span>
+          <span className="text-muted-foreground">较上次统计</span>
           <Change item={main} />
         </p>
-        {main?.previous_date && (
-          <p className="mt-1 text-xs text-muted-foreground">
-            对比 {main.previous_date} · 上一有效数据日
-          </p>
-        )}
-        <div className="main-quote-bottom">
-          <div className="text-xs text-muted-foreground">
-            {main ? (
-              <>
-                <p className="mb-1">数据日期</p>
-                <QuoteDate item={main} />
-              </>
-            ) : (
-              <p>{missing}</p>
-            )}
-          </div>
-        </div>
+        <ComparisonDate item={main} />
+        {!main && <p className="mt-3 text-xs text-muted-foreground">{missing}</p>}
       </Card>
       {(["xau_cny_g", "china_gold_base"] as const).map((key) => {
         const item = byKey.get(key);
@@ -146,41 +146,38 @@ export function Quotes({
   );
 }
 
-export function BrandTable({
-  quotes,
-  loading,
-  failed,
-}: {
+export interface QuoteTableProps {
   quotes: LatestItem[];
   loading: boolean;
   failed: boolean;
-}) {
+}
+
+function QuoteTable({
+  quotes,
+  loading,
+  failed,
+  all = false,
+}: QuoteTableProps & { all?: boolean }) {
   const byKey = new Map(quotes.map((item) => [item.item_key, item]));
   return (
-    <Card className="brand-card">
-      <div className="section-heading">
-        <div>
-          <h2>品牌金店金价</h2>
-          <p>足金饰品挂牌价 · 品牌名称可查看报价来源</p>
-        </div>
-        <span className="eyebrow">8 个品牌</span>
-      </div>
+    <>
       <table className="brand-table" aria-busy={loading}>
         <caption className="sr-only">
-          品牌足金饰品报价，涨跌额单位为元/克；较昨日指上一有效数据日。
+          {all ? "全部品种最新行情" : "品牌足金饰品报价"}，较上次统计涨跌额单位为元/克；日期不连续时单独标注对比日。
         </caption>
         <thead>
           <tr>
-            <th scope="col">品牌</th>
+            <th scope="col">{all ? "品种" : "品牌"}</th>
             <th scope="col">
-              足金饰品价<span>（元/克）</span>
+              {all ? "价格" : "足金饰品价"}
+              <span>（元/克）</span>
             </th>
-            <th scope="col">较昨日涨跌</th>
-            <th scope="col">更新日期</th>
+            <th scope="col">较上次统计涨跌</th>
+            <th scope="col">数据日期</th>
           </tr>
         </thead>
         <tbody>
-          {items.slice(3).map(({ key, name }) => {
+          {(all ? items : items.slice(3)).map(({ key, name }) => {
             const item = byKey.get(key);
             return (
               <tr key={key}>
@@ -197,11 +194,7 @@ export function BrandTable({
                 </td>
                 <td>
                   <Change item={item} />
-                  {item?.previous_date && (
-                    <span className="comparison-date">
-                      对比 {item.previous_date}
-                    </span>
-                  )}
+                  <ComparisonDate item={item} />
                 </td>
                 <td>{item ? <QuoteDate item={item} /> : "—"}</td>
               </tr>
@@ -210,8 +203,38 @@ export function BrandTable({
         </tbody>
       </table>
       <p className="table-note">
-        “较昨日”对比上一有效数据日，不一定是日历昨天。饰品价可能另计工费，以门店实际报价为准。
+        “较上次统计”对比上一有效数据日；日期不连续时单独标注对比日。饰品价可能另计工费，以门店实际报价为准。
       </p>
+    </>
+  );
+}
+
+export function MarketSummary(props: QuoteTableProps) {
+  return (
+    <section aria-labelledby="market-summary-title" className="market-summary">
+      <div className="section-heading">
+        <div>
+          <h2 id="market-summary-title">全部品种最新行情</h2>
+          <p>大盘与品牌报价总览 · 最新行情不随历史区间或图例筛选改变</p>
+        </div>
+        <span className="eyebrow">{items.length} 个品种</span>
+      </div>
+      <QuoteTable {...props} all />
+    </section>
+  );
+}
+
+export function BrandTable(props: QuoteTableProps) {
+  return (
+    <Card className="brand-card">
+      <div className="section-heading">
+        <div>
+          <h2>品牌金店金价</h2>
+          <p>足金饰品挂牌价 · 品牌名称可查看报价来源</p>
+        </div>
+        <span className="eyebrow">8 个品牌</span>
+      </div>
+      <QuoteTable {...props} />
     </Card>
   );
 }

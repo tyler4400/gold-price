@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   comparison,
+  comparisonDate,
+  isConsecutiveDay,
+  parseAllHistory,
   fetchJson,
   items,
   parseHistory,
@@ -53,9 +56,9 @@ describe("market contract and display", () => {
         change_percent: 0,
       }),
     ).toEqual({
-      text: "+0.01 (0.00%)",
+      text: "▲0.01",
       tone: "up",
-      basis: "较 2026-11-06（上一有效数据日），涨跌额单位为元/克",
+      basis: "较上次统计（2026-11-06，上一有效数据日），涨跌额单位为元/克",
     });
     expect(
       comparison({
@@ -64,7 +67,7 @@ describe("market contract and display", () => {
         change: -2,
         change_percent: -1.96,
       }).text,
-    ).toBe("−2.00 (−1.96%)");
+    ).toBe("▼−2");
     expect(
       comparison({
         ...quote,
@@ -80,12 +83,41 @@ describe("market contract and display", () => {
         change: 0,
         change_percent: 0,
       }).text,
-    ).toBe("持平 0.00 (0.00%)");
+    ).toBe("0");
   });
   it("uses Beijing calendar date across UTC midnight", () => {
     expect(todayInShanghai(new Date("2026-11-09T16:01:00Z"))).toBe(
       "2026-11-10",
     );
+  });
+  it.each([
+    [13, "▲13", "up"], [-13, "▼−13", "down"],
+    [21.67, "▲21.67", "up"], [-21.67, "▼−21.67", "down"],
+    [1.5, "▲1.5", "up"], [0, "0", "neutral"], [-0, "0", "neutral"],
+  ])("formats change %s without percentages or redundant decimals", (change, text, tone) => {
+    expect(comparison({ ...quote, previous_date: "2026-11-09", change, change_percent: null }))
+      .toEqual({ text, tone, basis: "较上次统计，涨跌额单位为元/克" });
+  });
+  it.each([
+    ["2026-11-12", "2026-11-11", true],
+    ["2026-11-01", "2026-10-31", true],
+    ["2027-01-01", "2026-12-31", true],
+    ["2024-03-01", "2024-02-29", true],
+    ["2025-03-01", "2025-02-28", true],
+    ["2026-11-09", "2026-11-06", false],
+    ["2026-10-09", "2026-09-30", false],
+    ["2026-11-12", "2026-11-12", false],
+    ["2026-11-12", "2026-11-13", false],
+    ["2026-11-12", null, false],
+    ["2026-03-01", "2026-02-29", false],
+    ["invalid", "2026-11-11", false],
+  ])("compares calendar dates %s / %s", (date, previous, expected) => {
+    expect(isConsecutiveDay(date, previous)).toBe(expected);
+  });
+  it("only exposes a comparison date for gaps, relative to the quote's own date", () => {
+    expect(comparisonDate({ ...quote, previous_date: "2026-11-09" })).toBeNull();
+    expect(comparisonDate({ ...quote, previous_date: "2026-11-06" })).toBe("2026-11-06");
+    expect(comparisonDate(quote)).toBeNull();
   });
   it("keeps one point and missing days exactly as returned", () => {
     expect(parseHistory(history).points).toHaveLength(1);
@@ -107,6 +139,26 @@ describe("market contract and display", () => {
         points: [quote, { ...quote, date: "2026-11-06" }],
       }),
     ).toThrow();
+  });
+  it("validates every series while preserving sparse and empty histories", () => {
+    const { item_key: _key, points: _points, ...bounds } = history;
+    const series = items.map(({ key }) => ({
+      item_key: key, points: key === quote.item_key ? [{ ...quote, date: "2026-11-06" }, quote] : [],
+    }));
+    const batch = { ...bounds, series };
+    expect(parseAllHistory(batch)).toEqual(batch);
+    for (const invalid of [
+      { ...batch, unit: "USD/g" },
+      { ...batch, series: [] },
+      { ...batch, series: series.slice(1) },
+      { ...batch, series: [series[0], ...series.slice(0, -1)] },
+      ...[
+        { item_key: "unknown", points: [] },
+        { item_key: quote.item_key, points: [quote, quote] },
+        { item_key: quote.item_key, points: [{ ...quote, date: "2026-10-01" }] },
+        { item_key: quote.item_key, points: [{ ...quote, price: 0 }] },
+      ].map(row => ({ ...batch, series: [row, ...series.slice(1)] })),
+    ]) expect(() => parseAllHistory(invalid)).toThrow();
   });
   it("distinguishes HTTP, non-JSON and invalid payload failures from empty data", async () => {
     const request = () =>

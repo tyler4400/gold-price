@@ -19,10 +19,9 @@ export function App() {
       <aside className="side-slot" data-slot="left-aside" aria-hidden="true" />
       <div className="content-shell">
         <header className="site-header">
-          <a href="/" aria-label="金价首页" className="site-logo">
+          <a href="/" aria-label="每日金价首页" className="site-logo">
             <img src="/logo.svg" width="32" height="32" alt="" />
-            <span className="site-wordmark">金价</span>
-            <span className="site-wordmark-en">gold-price</span>
+            <span className="site-wordmark">每日金价</span>
           </a>
           <nav aria-label="外观与项目" className="flex items-center gap-1">
             <ThemeToggleButton />
@@ -58,7 +57,11 @@ export function App() {
             loading={latest.loading}
             failed={Boolean(latest.error)}
           />
-          <HistoryChart />
+          <HistoryChart
+            quotes={quotes}
+            loading={latest.loading}
+            failed={Boolean(latest.error)}
+          />
           <BrandTable
             quotes={quotes}
             loading={latest.loading}

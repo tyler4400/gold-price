@@ -38,30 +38,43 @@ export interface History {
   to: string;
   points: Pick<PriceRecord, "date" | "price" | "source_url" | "fetched_at">[];
 }
+export interface AllHistory extends Omit<History, "item_key" | "points"> {
+  series: Pick<History, "item_key" | "points">[];
+}
 
 export const priceText = (value: number) =>
   value.toLocaleString("zh-CN", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
-const signed = (value: number) =>
-  `${value > 0 ? "+" : value < 0 ? "−" : ""}${priceText(Math.abs(value))}`;
+export function isConsecutiveDay(date: string, previousDate: string | null) {
+  return (
+    validDate(date) &&
+    validDate(previousDate) &&
+    Date.parse(date) - Date.parse(previousDate) === 86_400_000
+  );
+}
+export function comparisonDate(item: LatestItem): string | null {
+  return item.previous_date && !isConsecutiveDay(item.date, item.previous_date)
+    ? item.previous_date
+    : null;
+}
 export function comparison(item: LatestItem) {
-  if (
-    item.previous_date === null ||
-    item.change === null ||
-    item.change_percent === null
-  ) {
+  if (item.previous_date === null || item.change === null) {
     return {
       text: "暂无对比",
       tone: "neutral",
       basis: "尚无上一有效日期的报价",
     };
   }
+  const date = comparisonDate(item);
+  const amount = Math.abs(item.change).toLocaleString("zh-CN", {
+    maximumFractionDigits: 2,
+  });
   return {
-    text: `${item.change === 0 ? "持平 " : ""}${signed(item.change)} (${signed(item.change_percent)}%)`,
+    text: `${item.change > 0 ? "▲" : item.change < 0 ? "▼−" : ""}${amount}`,
     tone: item.change > 0 ? "up" : item.change < 0 ? "down" : "neutral",
-    basis: `较 ${item.previous_date}（上一有效数据日），涨跌额单位为元/克`,
+    basis: `较上次统计${date ? `（${date}，上一有效数据日）` : ""}，涨跌额单位为元/克`,
   };
 }
 export function todayInShanghai(now = new Date()) {
@@ -153,6 +166,28 @@ export function parseHistory(value: unknown): History {
     previous = date;
   }
   return data as unknown as History;
+}
+
+export function parseAllHistory(value: unknown): AllHistory {
+  const data = object(value);
+  if (!Array.isArray(data.series) || data.series.length !== items.length)
+    throw new Error("历史响应格式异常，请稍后重试。");
+  const keys = new Set();
+  for (const value of data.series) {
+    const series = object(value);
+    const history = parseHistory({
+      unit: data.unit,
+      range: data.range,
+      from: data.from,
+      to: data.to,
+      item_key: series.item_key,
+      points: series.points,
+    });
+    if (keys.has(history.item_key))
+      throw new Error("历史品种重复，请稍后重试。");
+    keys.add(history.item_key);
+  }
+  return data as unknown as AllHistory;
 }
 
 export async function fetchJson<T>(
